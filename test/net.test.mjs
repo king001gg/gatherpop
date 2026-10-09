@@ -592,3 +592,211 @@ test('走一遍完整的：画的人掉线 → 房主看得见 → 跳过 → �
     assert.equal(cl.c.myView.step, 'result', '每个还在的对端都该能继续往下走');
   }
 });
+
+/* ─────────── 刷新之后：带着 token 认回原来的座位 ───────────
+   房主那边房间能存回来（见 core 的持久化），但光存房间没用 —— 大家重新扫码
+   要是都变成新成员，分数清空、狼人杀身份重发，原来那排还挂在名单上成了幽灵。
+   所以 join 要能捎上上次那枚 token，把连接接回**原来那个座位**。 */
+
+function tmpStore(){
+  const m = {};
+  return {
+    getItem: (k) => (k in m ? m[k] : null),
+    setItem: (k, v) => { m[k] = String(v); },
+    removeItem: (k) => { delete m[k]; },
+  };
+}
+
+/** 让某个对端真的消失 —— 真机上就是那条连接断了 */
+function dropPeer(hostT, peerId){
+  const i = hostT._peers.indexOf(peerId);
+  if (i >= 0) hostT._peers.splice(i, 1);
+}
+
+/** 来了一个新连接，带着（可能有的）token 要求进房间 */
+function rejoin(hub, hostT, peerId, hostId, name, token){
+  const t = hub.add(new FakeTransport(peerId, hub));
+  hostT.connect(peerId);
+  t.connect(hostId);
+  const c = new GP.RoomController({ transport: t });
+  return { t, c, ready: c.joinAsClient(t, name, { token }) };
+}
+
+test('★ 带着 token 回来，认的是原来那个座位 —— 不新增成员，分数还在', async () => {
+  const { hub, hostT, host, clients } = netWithN(2);
+  await Promise.all(clients.map(c => c.ready));
+  const me = clients[0].c.me;
+  host.addScore(me.id, 5);
+  const before = host.room.members.length;
+
+  dropPeer(hostT, 'peer0');                      // 这台设备掉了
+  const back = rejoin(hub, hostT, 'peer0b', 'host', '玩家1', me.token);
+  await back.ready;
+
+  assert.equal(host.room.members.length, before, '不该多出一个成员');
+  assert.equal(back.c.me.id, me.id, '要拿回同一个 id');
+  assert.equal(back.c.me.token, me.token, 'token 也不该换');
+  assert.equal(host.room.scores[me.id], 5, '分数得跟着座位走');
+  assert.equal(host.room.members.find(m => m.id === me.id).connected, true);
+});
+
+test('★ 座位上还有活人时，同样的 token 只能当新成员 —— 不能顶掉在座的人', async () => {
+  const { hub, hostT, host, clients } = netWithN(2);
+  await Promise.all(clients.map(c => c.ready));
+  const me = clients[0].c.me;
+  const before = host.room.members.length;
+
+  // 注意：peer0 没掉，还连着
+  const thief = rejoin(hub, hostT, 'peer9', 'host', '冒名顶替', me.token);
+  await thief.ready;
+
+  assert.equal(host.room.members.length, before + 1, '顶不掉，只能当新成员');
+  assert.notEqual(thief.c.me.id, me.id);
+  assert.equal(host.room.members.find(m => m.id === me.id).connected, true, '在座的人不受影响');
+});
+
+test('房主的座位永远认不了 —— 认下它就等于把房主权限交出去', async () => {
+  const { hub, hostT, host } = netWithHost();
+  const hostToken = host.room.members[0].token;
+  const c = rejoin(hub, hostT, 'peer0', 'host', '冒充房主', hostToken);
+  await c.ready;
+
+  assert.notEqual(c.c.me.id, host.room.hostId, '不能变成房主');
+  assert.equal(c.c.me.isHost, false);
+  assert.equal(host.room.hostId, host.room.members[0].id, '房主还是原来那位');
+  assert.equal(host.room.members[0].isHost, true);
+});
+
+test('token 不认识（换了房间、或者第一次来）就当新成员，不抛', async () => {
+  const { hub, hostT, host, clients } = netWithN(1);
+  await Promise.all(clients.map(c => c.ready));
+  const before = host.room.members.length;
+
+  for (const tok of ['t_根本没这回事', '', null, undefined, 123, {}]){
+    const x = rejoin(hub, hostT, 'peer_' + String(tok), 'host', '路人', tok);
+    await x.ready;
+    assert.equal(x.c.me.isHost, false);
+  }
+  assert.equal(host.room.members.length, before + 6, '每一个都该成为一个新成员');
+});
+
+test('★ 谁也没拿到别人的 token —— 认座用的凭据只发给本人', async () => {
+  const { hub, hostT, host, clients } = netWithN(2);
+  await Promise.all(clients.map(c => c.ready));
+  dropPeer(hostT, 'peer0');
+  const back = rejoin(hub, hostT, 'peer0b', 'host', '玩家1', clients[0].c.me.token);
+  await back.ready;
+
+  const all = host.room.members.map(m => m.token);
+  assert.ok(all.every(t => t), '每个座位都得有 token，不然认不回来');
+
+  // 发给 peer1 的东西里，除了他自己的那枚，别人的一个都不许有
+  const wire = hostT.wireTo('peer1');
+  for (const t of all){
+    if (t === clients[1].c.me.token) continue;
+    assert.ok(!wire.includes(t), `发给 peer1 的报文里漏了别人的 token：${t}`);
+  }
+  // 而本人拿到的那一份里，本来就只有他自己的
+  assert.ok(hostT.wireTo('peer0b').includes(clients[0].c.me.token));
+});
+
+test('★ 完整走一遍：开局 → 房主刷新 → 房间接回来 → 大家认座 → 接着玩', async () => {
+  const { hub, hostT, host, clients } = netWithN(2);
+  await Promise.all(clients.map(c => c.ready));
+  const ids = clients.map(c => c.c.me.id);
+  const tokens = clients.map(c => c.c.me.token);
+
+  host.startGame('drawguess');
+  host.addScore(ids[0], 4);
+  host.addScore(ids[1], 2);
+  const store = tmpStore();
+  assert.equal(GP.saveRoom(store, host), 1);
+
+  // —— 房主刷新了 ——
+  // 旧页面连同它那条传输一起没了，新页面是一个全新的控制器
+  hub.byId.delete('host');
+  const hostT2 = hub.add(new FakeTransport('host2', hub));
+  const host2 = new GP.RoomController({ transport: hostT2 });
+  assert.equal(host2.restore(GP.loadSavedRoom(store)), true);
+
+  assert.equal(host2.room.members.length, 3, '成员一个都没少');
+  assert.equal(host2.room.mounted.gameId, 'drawguess', '打到一半的那局也还在');
+  assert.equal(host2.room.scores[ids[0]], 4);
+  // 刷新把连接全断了 —— 除房主外人人离线，这是事实
+  assert.deepEqual(host2.room.members.filter(m => m.connected).map(m => m.id),
+                   [host2.room.hostId]);
+
+  // —— 大家重新扫码进来，各带各的 token ——
+  const re = [
+    rejoin(hub, hostT2, 'h_peer0', 'host2', '玩家1', tokens[0]),
+    rejoin(hub, hostT2, 'h_peer1', 'host2', '玩家2', tokens[1]),
+  ];
+  await Promise.all(re.map(r => r.ready));
+
+  assert.equal(host2.room.members.length, 3, '认座不该多出人来');
+  assert.deepEqual(re.map(r => r.c.me.id), ids, '两个人都拿回自己的 id');
+  assert.equal(host2.room.scores[ids[0]], 4, '分数跟着座位走');
+  assert.equal(host2.room.scores[ids[1]], 2);
+  assert.equal(host2.room.members.every(m => m.connected), true, '都接回来了');
+
+  // 而且这一局真的能接着往下玩：画手画完，轮到下一个人
+  const drawer = host2.room.mounted.state.players[host2.room.mounted.state.drawerIdx];
+  host2.applyAs(drawer, { t:'giveUp' });
+  assert.equal(host2.room.mounted.state.step, 'result');
+  for (const p of ['h_peer0', 'h_peer1']){
+    assert.match(hostT2.wireTo(p), /"t":"view"/, '认座之后新视图要推给他们');
+  }
+  for (const r of re){
+    assert.equal(r.c.myView.step, 'result', '各人那边也得真的看到这一轮结算');
+  }
+});
+
+/* ─────────── 对端发来的垃圾报文：房主不许被打崩 ───────────
+   线上的东西没有可信度。这不是防御性编程洁癖 —— 下面的报文任何连上的对端
+   都能发，包括还没 join 的那种。 */
+
+test('★ 对端发来 null / 非对象报文，房主不抛异常也不改状态', () => {
+  const { hub, hostT, host } = netWithHost();
+  addClient(hub, hostT, 'peer0', '玩家');
+  host.startGame('dice');
+  const before = JSON.stringify(host.room.mounted.state);
+
+  // 字面量 `null` 在 JSON.parse 里不报错，出来的就是 null —— 真实可达
+  for (const junk of [null, 42, 'hello', true, [], '[object Object]']){
+    assert.doesNotThrow(() => hostT.inject(junk, 'peer0'),
+      `注入 ${JSON.stringify(junk)} 时房主不该抛`);
+  }
+  assert.equal(JSON.stringify(host.room.mounted.state), before, '垃圾报文不该动到局面');
+  assert.equal(host.room.members.length, 2, '也不该凭空多出成员');
+});
+
+test('★ action 是 null 时房主不抛，也不改状态', () => {
+  const { hub, hostT, host } = netWithHost();
+  const cli = addClient(hub, hostT, 'peer0', '玩家');
+  host.startGame('dice');
+  const before = JSON.stringify(host.room.mounted.state);
+
+  for (const bad of [null, undefined, 'x', 7, true, []]){
+    assert.doesNotThrow(() => hostT.inject({ t:'action', action: bad }, 'peer0'),
+      `action=${JSON.stringify(bad)} 时不该抛`);
+  }
+  assert.equal(JSON.stringify(host.room.mounted.state), before, '局面不该变');
+
+  // 而且不抛之后协议还得是活的 —— 正常动作照样能过
+  hostT.inject({ t:'action', action: { t:'roll', sides: 6 } }, 'peer0');
+  assert.notEqual(JSON.stringify(host.room.mounted.state), before, '垃圾之后正常动作仍要能生效');
+});
+
+test('★ 没 join 过的对端发动作和 join 都不该被受理', () => {
+  const { hub, hostT, host } = netWithHost();
+  host.startGame('dice');
+  const before = JSON.stringify(host.room.mounted.state);
+
+  hostT.connect('ghost');                      // 连上了，但从没 join
+  hostT.inject({ t:'action', action: { t:'roll', sides: 6 } }, 'ghost');
+  assert.equal(JSON.stringify(host.room.mounted.state), before, '幽灵对端不能动局面');
+
+  assert.equal(host.room.members.length, 1, '这时房间里还只有房主');
+  hostT.inject({ t:'join', name: '幽灵' }, 'ghost');
+  assert.equal(host.room.members.length, 2, 'join 之后才该多出成员');
+});

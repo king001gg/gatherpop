@@ -2026,6 +2026,351 @@ test('狼人杀：猎人掉线，跳过 = 不开枪（shoot 本来就接受 null
   assert.equal(st().dead.length, dead0, '弃权就是不带人走');
 });
 
+/* ─────────────────── 刷新之后：房间恢复 ───────────────────
+   刷新即散伙是聚会现场代价最大的一个毛病：房主手一滑，一桌人正等着，
+   成员、记分牌、打到一半的那局全归零。 */
+
+/** 一个干净的假存储（跟 memoryStore 同形状，但每个用例各用各的） */
+function tmpStore(){
+  const m = {};
+  return {
+    getItem: (k) => (k in m ? m[k] : null),
+    setItem: (k, v) => { m[k] = String(v); },
+    removeItem: (k) => { delete m[k]; },
+    has: (k) => k in m,
+  };
+}
+
+/** 直接塞一份存好的房间进去，用来构造各种坏/旧/大的存档 */
+function putSave(store, room, { v = 1, savedAt = Date.now(), dropped = null } = {}){
+  store.setItem(GP.ROOM_KEY, JSON.stringify({ v, savedAt, dropped, room }));
+}
+
+test('存下来的房间能原样取回来：成员、记分牌、进行中的那一局都在', () => {
+  const { ctrl, host, guests } = roomWith('小明', '小红', '小刚');
+  ctrl.startGame('drawguess');
+  ctrl.addScore(host.id, 3);
+  ctrl.addScore(guests[0].id, -1);
+
+  const store = tmpStore();
+  assert.equal(GP.saveRoom(store, ctrl), 1, '应该整套存下来');
+
+  const back = GP.loadSavedRoom(store);
+  assert.ok(back, '存了就该取得回来');
+  assert.equal(back.room.roomId, ctrl.room.roomId);
+  assert.equal(back.room.hostId, host.id);
+  assert.deepEqual(back.room.members.map(m => m.id), ctrl.room.members.map(m => m.id));
+  assert.deepEqual(back.room.scores, ctrl.room.scores, '记分牌要一分不差');
+  assert.equal(back.room.mounted.gameId, 'drawguess');
+  assert.deepEqual(back.room.mounted.state, ctrl.room.mounted.state, '打到一半的那局要一模一样');
+});
+
+test('★ token 存进本地能认座，但绝不会跟着快照过线', () => {
+  const { ctrl, host, guests } = roomWith('小明', '小红', '小刚', '小美', '大壮');
+  const store = tmpStore();
+  ctrl.startGame('werewolf');
+  GP.saveRoom(store, ctrl);
+
+  // 本地确实存了 token —— 没有它就没法在大家重新扫码时认回座位
+  const back = GP.loadSavedRoom(store);
+  const tokens = back.room.members.map(m => m.token);
+  assert.ok(tokens.every(t => typeof t === 'string' && t), 'token 得存下来');
+
+  // 但对外广播的快照里一个都不许有
+  ctrl.restore(back);
+  const wire = JSON.stringify(ctrl.snapshot());
+  for (const t of tokens) assert.ok(!wire.includes(t), `快照里漏了 token：${t}`);
+  assert.ok(!wire.includes('"token"'), '快照的形状里就不该有 token 这个字段');
+  assert.equal(host.token, tokens[0]);
+  assert.equal(guests.length, 4);
+});
+
+test('超过 12 小时就当没有，并且把那条记录删掉', () => {
+  const { ctrl } = roomWith('小明');
+  const store = tmpStore();
+  GP.saveRoom(store, ctrl);
+
+  const later = Date.now() + GP.ROOM_TTL_MS + 1000;
+  assert.equal(GP.loadSavedRoom(store, later), null, '过期了就不该再拿出来');
+  assert.equal(store.has(GP.ROOM_KEY), false, '顺手删掉，别在人家机器上留垃圾');
+});
+
+test('刚好在期限之内还是取得到 —— 边界别切错', () => {
+  const { ctrl } = roomWith('小明');
+  const store = tmpStore();
+  const now = Date.now();
+  GP.saveRoom(store, ctrl, now);
+  assert.ok(GP.loadSavedRoom(store, now + GP.ROOM_TTL_MS - 1000), '还没到点，该给');
+});
+
+test('存坏了的存档当作没有，而不是把首页炸掉', () => {
+  const store = tmpStore();
+  for (const junk of ['', '{', 'null', '"字符串"', '[1,2,3]', '{"v":1}']){
+    store.setItem(GP.ROOM_KEY, junk);
+    assert.equal(GP.loadSavedRoom(store), null, `坏存档没兜住：${junk}`);
+  }
+});
+
+test('版本号对不上就不要 —— 旧版本存的东西不该被硬塞回来', () => {
+  const store = tmpStore();
+  putSave(store, GP.makeRoom({ hostName:'小明' }), { v: 99 });
+  assert.equal(GP.loadSavedRoom(store), null);
+});
+
+test('房主自己不在成员列表里的存档是坏的，扔掉', () => {
+  const store = tmpStore();
+  const room = GP.makeRoom({ hostName:'小明' });
+  room.hostId = 'm_不存在';
+  putSave(store, room);
+  assert.equal(GP.loadSavedRoom(store), null);
+});
+
+test('存档里那款游戏已经不在了，房间照常恢复，只把那一局摘掉', () => {
+  const store = tmpStore();
+  const room = GP.makeRoom({ hostName:'小明' });
+  room.mounted = { gameId:'早就删掉的一款游戏', state:{}, preset:null };
+  room.currentGameId = '早就删掉的一款游戏';
+  room.phase = 'playing';
+  putSave(store, room);
+
+  const back = GP.loadSavedRoom(store);
+  assert.ok(back, '房间本身是好的，不该连坐');
+  assert.equal(back.room.mounted, null, '留着一个 viewFor 都调不出来的局面，一进房间就炸');
+  assert.equal(back.room.currentGameId, null);
+  assert.equal(back.room.phase, 'lobby');
+});
+
+test('存档里缺的字段会补上默认值，而不是留一个半死不活的房间', () => {
+  const store = tmpStore();
+  const room = GP.makeRoom({ hostName:'小明' });
+  delete room.scores;
+  room.history = '不是数组';
+  putSave(store, room);
+
+  const back = GP.loadSavedRoom(store);
+  assert.deepEqual(back.room.scores, {});
+  assert.deepEqual(back.room.history, []);
+});
+
+test('没有挂载的游戏，currentGameId 和 phase 也要归位 —— 落单了界面会去取一个不存在的名字', () => {
+  const store = tmpStore();
+  const room = GP.makeRoom({ hostName:'小明' });
+  room.mounted = null;
+  room.currentGameId = 'drawguess';       // 手工写坏的存档：只剩这一个字段
+  room.phase = 'playing';
+  putSave(store, room);
+
+  const back = GP.loadSavedRoom(store);
+  assert.equal(back.room.currentGameId, null);
+  assert.equal(back.room.phase, 'lobby');
+});
+
+test('★ 画面太大存不下时，丢掉那一局但保住房间 —— 并且如实记下丢了什么', () => {
+  const { ctrl, host } = roomWith('小明', '小红', '小刚');
+  ctrl.startGame('drawguess');
+  ctrl.addScore(host.id, 7);
+  // 你画我猜画满时 strokes 能顶穿 localStorage 的配额，这里直接造一个超标的
+  ctrl.room.mounted.state = { big: 'x'.repeat(GP.ROOM_MAX_CHARS + 100) };
+
+  const store = tmpStore();
+  assert.equal(GP.saveRoom(store, ctrl), 2, '应该走降级那条路');
+
+  const back = GP.loadSavedRoom(store);
+  assert.equal(back.dropped, 'drawguess', '丢了哪一款要说出来，不能装作无事发生');
+  assert.equal(back.room.mounted, null);
+  assert.equal(back.room.members.length, 3, '成员一个都不能少');
+  assert.deepEqual(back.room.scores, ctrl.room.scores, '记分牌也得留着');
+});
+
+test('restore 之后：房主是房主，别人都是离线', () => {
+  const { ctrl, host, guests } = roomWith('小明', '小红', '小刚');
+  ctrl.startGame('gomoku');
+  const store = tmpStore();
+  GP.saveRoom(store, ctrl);
+
+  // 换一个全新的控制器，模拟刷新之后的那个页面
+  const fresh = new GP.RoomController({});
+  assert.equal(fresh.room, null);
+  assert.equal(fresh.restore(GP.loadSavedRoom(store)), true);
+
+  assert.equal(fresh.mode, 'host');
+  assert.equal(fresh.isHost, true);
+  assert.equal(fresh.me.id, host.id);
+  assert.equal(fresh.room.mounted.gameId, 'gomoku', '刷新不该把这一局弄丢');
+  // 刷新之后所有 WebRTC 连接都随页面没了 —— 除了房主，人人离线是事实
+  assert.equal(fresh.room.members.find(m => m.id === host.id).connected, true);
+  for (const g of guests){
+    assert.equal(fresh.room.members.find(m => m.id === g.id).connected, false,
+                 '连接断了就该显示成不在线，不能骗人');
+  }
+});
+
+test('restore 拿到坏东西时返回 false，而不是抛', () => {
+  const fresh = new GP.RoomController({});
+  assert.equal(fresh.restore(null), false);
+  assert.equal(fresh.restore({}), false);
+  assert.equal(fresh.restore({ room:{ members:[] } }), false);
+  assert.equal(fresh.restore({ room:{ hostId:'m_1', members:[{ id:'m_2' }] } }), false,
+               '房主不在名单里，认不出「我」是谁');
+});
+
+test('散伙之后房间真的没了，而且回得去单机', () => {
+  const { ctrl } = roomWith('小明', '小红');
+  ctrl.startGame('dice');
+  assert.ok(ctrl.room);
+  ctrl.closeRoom();
+  assert.equal(ctrl.room, null);
+  assert.equal(ctrl.me, null);
+  assert.equal(ctrl.mode, 'solo', '散伙之后要能直接开一局单机，不能卡在房主态');
+  assert.equal(ctrl.plugin, null);
+});
+
+test('加进端的身份记在本地，下次连接时能拿出来', () => {
+  const store = tmpStore();
+  assert.equal(GP.loadMyIdentity(store), null, '第一次来什么都没有');
+  assert.equal(GP.saveMyIdentity(store, { token:'t_abc', name:'小红' }), true);
+  assert.deepEqual(GP.loadMyIdentity(store), { token:'t_abc', name:'小红' });
+});
+
+test('没有 token 的身份不写 —— 写了也认不了座', () => {
+  const store = tmpStore();
+  assert.equal(GP.saveMyIdentity(store, { name:'小红' }), false);
+  assert.equal(GP.saveMyIdentity(store, null), false);
+  assert.equal(GP.loadMyIdentity(store), null);
+});
+
+test('存坏了的身份当作没有，不连带把首页弄崩', () => {
+  const store = tmpStore();
+  for (const junk of ['', '{', 'null', '{"token":123}', '{"token":""}']){
+    store.setItem(GP.ME_KEY, junk);
+    assert.equal(GP.loadMyIdentity(store), null, `坏身份没兜住：${junk}`);
+  }
+});
+
+test('非房主不写房间存档 —— 加入端的房间是房主推来的，不该被本地存档盖掉', () => {
+  const store = tmpStore();
+  const c = new GP.RoomController({});
+  assert.equal(GP.saveRoom(store, c), 0, '连房间都没有');
+  c.createRoom('小明');
+  assert.equal(GP.saveRoom(store, c), 1);
+  c._mode = 'client';
+  assert.equal(GP.saveRoom(store, c), 0, '加入端不写');
+});
+
+/* ─────────── 变异测试挖出来的盲区：这几条以前没人守着 ───────────
+   往代码里注入人工缺陷、看测试抓不抓得住，跑出来 4 条存活。逐条查过，
+   没有一条是「语义等价」的假变异 —— 都是测试真的没覆盖到的地方。 */
+
+test('★ 连开两局必须重新洗牌 —— seed 不推进的话，每局都是同一个人当卧底', () => {
+  const { ctrl } = roomWith('甲', '乙', '丙', '丁', '戊');
+  ctrl.room.seed = 20260101;
+
+  const seedBefore = ctrl.room.seed;
+  ctrl.startGame('undercover');
+  assert.notEqual(ctrl.room.seed, seedBefore, '开一局就得把 seed 往前推，否则下一局是同一套');
+
+  // 单看两局会有 1/10 的巧合（5 人 2 卧底只有 10 种分法），所以连开六局看整体。
+  // 这是玩家真会碰到的：一桌人喊「再来一局」，结果还是他当卧底、词也没换。
+  const sigs = new Set();
+  for (let i = 0; i < 6; i++){
+    const st = ctrl.room.mounted.state;
+    sigs.add(st.spyIds.slice().sort().join('|') + '::' + JSON.stringify(st.words));
+    ctrl.endGame();
+    ctrl.startGame('undercover');
+  }
+  assert.ok(sigs.size > 1, `连开六局，卧底阵容和词一次都没变过 —— 洗牌根本没动（只有 ${sigs.size} 种组合）`);
+});
+
+test('★ esc 把尖括号挡掉 —— 成员名是唯一的注入面，这道门不能漏', () => {
+  // 名字是唯一由对端直接控制、又会进 HTML 的字符串（77 处渲染都靠 esc）
+  assert.equal(GP.esc('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;');
+  assert.equal(GP.esc('" onmouseover="alert(1)'), '&quot; onmouseover=&quot;alert(1)');
+  assert.equal(GP.esc("'"), '&#39;');
+  assert.equal(GP.esc('a&b'), 'a&amp;b');
+  assert.equal(GP.esc(null), '');
+  assert.equal(GP.esc(undefined), '');
+});
+
+test('★ 十款游戏的渲染都挡得住恶意成员名 —— 只要有一处忘了 esc 就破了', () => {
+  // 名字是唯一由对端直接控制、又会流进 HTML 的字符串。esc 单测只保证函数本身对，
+  // 这条保证**每一处调用点**都调了它 —— 新加一款游戏忘了 esc，这里就会红。
+  const EVIL = '<img src=x onerror=alert(1)>';
+  const { ctrl } = roomWith('房主', EVIL, '丙', '丁', '戊', '己', '庚', '辛', '壬');
+  const ctx = { me: ctrl.room.members[0], members: ctrl.room.members, scores: {}, ui: {} };
+
+  for (const p of GP.GAME_PLUGINS){
+    if (!ctrl.canStart(p.id)) continue;          // 人数不够的跳过，不是失败
+    ctrl.startGame(p.id);
+    const view = p.viewFor(ctrl.room.mounted.state, ctrl.room.members[0].id);
+    const html = p.render(view, ctx);
+    assert.ok(typeof html === 'string', `${p.id} 的 render 应当返回字符串`);
+    assert.ok(!html.includes('<img src=x onerror='),
+      `${p.id} 的渲染结果里出现了未转义的成员名 —— 有一处漏了 esc`);
+  }
+});
+
+test('★ 两个预言家的局里各看各的验人结果，不许串台', () => {
+  // wwLineup 明确支持 preset.lineup 自定义阵容 —— 双预言家是可配出来的，不是假想
+  const { ctrl } = roomWith('甲', '乙', '丙', '丁', '戊', '己');
+  ctrl.room.seed = 7;
+  ctrl.startGame('werewolf', { preset: { lineup: { wolf:2, seer:2, witch:0, hunter:0, villager:2 } } });
+  const p = GP.pluginById('werewolf');
+  const st = JSON.parse(JSON.stringify(ctrl.room.mounted.state));
+
+  const seers = st.players.filter(id => st.roles[id] === 'seer');
+  assert.equal(seers.length, 2, '这个阵容配出来就该有 2 个预言家');
+  const [A, B] = seers;
+  const target = st.players.find(id => st.roles[id] === 'villager');
+
+  st.checks = [{ by: B, target, wolf: true, round: 1 }];
+  assert.deepEqual(p.viewFor(st, A).checks, [], 'A 不该看到 B 验了谁 —— 那是 B 的信息优势');
+  assert.deepEqual(p.viewFor(st, B).checks, [{ target, wolf: true }], 'B 自己验的要看得到');
+});
+
+test('★ 狼人不能杀不在局里的人 / 自己 / 已经出局的', () => {
+  const { ctrl } = roomWith('甲', '乙', '丙', '丁', '戊');
+  ctrl.room.seed = 11;
+  ctrl.startGame('werewolf');
+  const p = GP.pluginById('werewolf');
+  const st = JSON.parse(JSON.stringify(ctrl.room.mounted.state));
+  st.step = 'night.wolf';
+
+  const wolf = st.players.find(id => st.roles[id] === 'wolf');
+  const dead = st.players.find(id => st.roles[id] !== 'wolf');
+  st.dead.push(dead);                       // 假设这人白天已经被投出去了
+
+  assert.equal(p.canApply(st, wolf, { t:'kill', target:'根本没有这个 id' }), false, '不在局里的人');
+  assert.equal(p.canApply(st, wolf, { t:'kill', target: wolf }), false, '狼人不能自杀');
+  assert.equal(p.canApply(st, wolf, { t:'kill', target: dead }), false, '已经出局的人不能再被刀');
+  assert.equal(p.canApply(st, wolf, { t:'kill', target: null }), false, '空目标不算一次击杀');
+
+  // 守卫不能误伤合法目标
+  const ok = st.players.find(id => id !== wolf && id !== dead);
+  assert.equal(p.canApply(st, wolf, { t:'kill', target: ok }), true, '合法目标得放行');
+});
+
+test('★ 投票和验人也一样：目标必须在局、活着、且不是自己', () => {
+  const { ctrl } = roomWith('甲', '乙', '丙', '丁', '戊');
+  ctrl.room.seed = 13;
+  ctrl.startGame('werewolf');
+  const p = GP.pluginById('werewolf');
+  const st = JSON.parse(JSON.stringify(ctrl.room.mounted.state));
+  const me = st.players[0];
+  const other = st.players[1];
+  st.dead.push(other);
+
+  st.step = 'day.vote';
+  assert.equal(p.canApply(st, me, { t:'vote', target: me }), false, '不能投自己');
+  assert.equal(p.canApply(st, me, { t:'vote', target: other }), false, '不能投一个已经出局的人');
+  assert.equal(p.canApply(st, me, { t:'vote', target: 'ghost' }), false, '不能投不在局里的人');
+
+  st.step = 'night.seer';
+  st.roles[me] = 'seer';
+  st.dead = [];
+  assert.equal(p.canApply(st, me, { t:'check', target: me }), false, '预言家不能验自己');
+  assert.equal(p.canApply(st, me, { t:'check', target: 'ghost' }), false, '预言家不能验不在局的人');
+});
+
 /* ───────────────────────── 权益抽象 ───────────────────────── */
 
 test('权益抽象挡在联机核心前面：禁掉建房就真的建不了', () => {

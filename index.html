@@ -2552,7 +2552,7 @@ const memoryStore = {
   setItem(k, v){ this._m[k] = String(v); },
   removeItem(k){ delete this._m[k]; },
 };
-function presetStore(){
+function appStore(){
   // 隐私模式下 localStorage 会直接抛异常，所以每次都试
   try {
     if (typeof localStorage !== 'undefined' && localStorage){
@@ -2582,12 +2582,107 @@ function isPreset(x){
 
 function loadMyPresets(){
   try {
-    const arr = JSON.parse(presetStore().getItem(PRESET_KEY) || '[]');
+    const arr = JSON.parse(appStore().getItem(PRESET_KEY) || '[]');
     return Array.isArray(arr) ? arr.filter(isPreset) : [];
   } catch { return []; }          // 存坏了就当没有，不连带把房间弄崩
 }
 function saveMyPresets(list){
-  try { presetStore().setItem(PRESET_KEY, JSON.stringify(list.filter(isPreset).slice(0, 80))); return true; }
+  try { appStore().setItem(PRESET_KEY, JSON.stringify(list.filter(isPreset).slice(0, 80))); return true; }
+  catch { return false; }
+}
+
+/* ---------- 房间持久化 ----------
+   刷新一下整场就没了 —— 成员、常驻记分牌、打到一半的那一局全归零，而一桌人正等着。
+   房主的房间得能活过一次刷新。
+
+   和方案市场共用 appStore()：同一个入口，同样「存坏了当作没有」的脾气。
+   注意存进去的是**整个 room 对象，包括每个成员的 token** —— 没有 token 就没法在
+   大家重新扫码时认回原来的座位；而认不回座位，「恢复」就只是留了一份过期的副本。
+   token 不过线那条约束（见 snapshot）不受影响：它只落在房主这一台设备上。 */
+
+const ROOM_KEY = 'gatherpop.room.v1';
+const ROOM_TTL_MS = 12 * 60 * 60 * 1000;   // 一次聚会不可能超过 12 小时
+const ROOM_MAX_CHARS = 1000000;            // 超了就把进行中的那一局摘掉，房间本身照留
+
+/** 存房主的房间。→ 0 没存 / 1 全存了 / 2 只存了房间、丢了进行中那局 */
+function saveRoom(store, ctrl, now = Date.now()){
+  if (!ctrl || ctrl.mode !== 'host' || !ctrl.room) return 0;
+  const room = ctrl.room;
+  try {
+    const full = JSON.stringify({ v:1, savedAt: now, dropped: null, room });
+    if (full.length <= ROOM_MAX_CHARS){
+      store.setItem(ROOM_KEY, full);
+      return 1;
+    }
+  } catch { /* 序列化不了就走下面那条降级路 */ }
+
+  /* 太大。你画我猜画满时 strokes 能到几百 KB 往上，会顶穿 localStorage 的配额。
+     丢车保帅：把进行中的那一局摘掉，成员、记分牌、今晚的战绩都留下，
+     并且如实记下丢的是哪一款 —— 恢复时要说出来，不能装作无事发生。 */
+  try {
+    const slim = {
+      v:1, savedAt: now,
+      dropped: room.mounted ? room.mounted.gameId : null,
+      room: { ...room, mounted:null, currentGameId:null, phase:'lobby' },
+    };
+    store.setItem(ROOM_KEY, JSON.stringify(slim));
+    return 2;
+  } catch { return 0; }
+}
+
+function dropSavedRoom(store){
+  try { store.removeItem(ROOM_KEY); } catch { /* 删不掉就算了 */ }
+}
+
+/** 读回房主的房间。→ { room, savedAt, dropped } | null。
+    过期或损坏的顺手删掉，别在用户机器上留垃圾。 */
+function loadSavedRoom(store, now = Date.now()){
+  let data;
+  try { data = JSON.parse(store.getItem(ROOM_KEY) || 'null'); }
+  catch { dropSavedRoom(store); return null; }        // 存坏了
+
+  if (!data || data.v !== 1 || !data.room){ dropSavedRoom(store); return null; }
+  if (!Number.isFinite(data.savedAt) || now - data.savedAt > ROOM_TTL_MS){
+    dropSavedRoom(store);
+    return null;
+  }
+
+  const r = data.room;
+  if (typeof r.roomId !== 'string' || !Array.isArray(r.members) || !r.members.length){
+    dropSavedRoom(store); return null;
+  }
+  if (!r.members.some(m => m && m.id === r.hostId)){ dropSavedRoom(store); return null; }
+
+  // 字段兜底：缺什么补什么。宁可少一点，也不能还回来一个半死不活的房间
+  r.scores = (r.scores && typeof r.scores === 'object') ? r.scores : {};
+  r.history = Array.isArray(r.history) ? r.history : [];
+
+  /* 进行中的那一局：那个插件还在不在？state 还是不是个对象？不满足就整局摘掉 ——
+     留着一个连 viewFor 都调不出来的 mounted，一进房间就炸。
+     currentGameId / phase 一并归位：三个字段只要有一个落单，界面就会指着一款
+     不存在的游戏去取名字。 */
+  const okGame = r.mounted && pluginById(r.mounted.gameId) && r.mounted.state
+              && typeof r.mounted.state === 'object';
+  if (!okGame){
+    r.mounted = null;
+    r.currentGameId = null;
+    r.phase = 'lobby';
+  }
+
+  return { room: r, savedAt: data.savedAt, dropped: data.dropped || null };
+}
+
+/** 加进端记在本地的那点东西：认回座位用的 token，外加一个名字好预填输入框。 */
+const ME_KEY = 'gatherpop.me.v1';
+function loadMyIdentity(store){
+  try {
+    const x = JSON.parse(store.getItem(ME_KEY) || 'null');
+    return (x && typeof x.token === 'string' && x.token) ? x : null;
+  } catch { return null; }
+}
+function saveMyIdentity(store, me){
+  if (!me || typeof me.token !== 'string' || !me.token) return false;
+  try { store.setItem(ME_KEY, JSON.stringify({ token: me.token, name: me.name || '' })); return true; }
   catch { return false; }
 }
 
@@ -2714,6 +2809,47 @@ class RoomController {
     this._notify();
     return true;
   }
+  /** 冷启动：把存下来的房间整个接回来（配合 loadSavedRoom）。
+      刷新之后所有 WebRTC 连接都随页面一起没了 —— 所以除了房主，人人都是离线，
+      这是事实不是猜测。成员要靠 token 重新扫码认座位（见 _onHostMessage 的 join）。 */
+  restore(save){
+    const r = save && save.room;
+    if (!r || !Array.isArray(r.members)) return false;
+    const me = r.members.find(x => x && x.id === r.hostId);
+    if (!me) return false;
+    this.room = r;
+    this.me = me;
+    this._mode = 'host';
+    for (const m of r.members) m.connected = (m.id === r.hostId);
+    this._notify();
+    return true;
+  }
+  /** 散伙：房间没了，回单机。跟 endGame（只结束这一局）不是一回事。 */
+  closeRoom(){
+    this.room = null;
+    this.me = null;
+    this._mode = 'solo';
+    this._remoteView = null;
+    this._memberOfPeer.clear();
+    this._peerOfMember.clear();
+    this._notify();
+  }
+  /** 这个座位是不是已经有活人在用？认座要靠它挡住「顶掉别人的座位」。 */
+  _isSeatLive(memberId){
+    const peerId = this._peerOfMember.get(memberId);
+    return !!peerId && this.transport.peerIds.includes(peerId);
+  }
+  /** 拿着 token 想认回原来的座位。找得到、而且那座位眼下没活人，才给认。
+      **房主自己的座位永远不给认** —— 认下它就等于把房主权限交出去，
+      而 token 从不过线，没有任何正当理由会让别人的 token 是房主那一枚。 */
+  _claimSeat(msg){
+    if (!msg || typeof msg.token !== 'string' || !msg.token) return null;
+    const m = this.room.members.find(x => x && x.token === msg.token);
+    if (!m || m.id === this.room.hostId) return null;
+    if (this._isSeatLive(m.id)) return null;    // 座上还有活人，只能当新成员
+    if (msg.name) m.name = msg.name;            // 换了名字就认新名字
+    return m;
+  }
   get isHost(){ return !!this.room && !!this.me && this.room.hostId === this.me.id; }
   /** 分享方案是个权益点。注意：**用**别人分享来的方案永远不受限，
       只有「分享出去」才可能被拦 —— 拦收的人只会让方案传不开。 */
@@ -2803,6 +2939,8 @@ class RoomController {
   _applyAction(actorId, action){
     const { room } = this;
     if (!room || !room.mounted) return false;
+    // 动作也是从线上来的：`{"t":"action","action":null}` 不该把 switch 打崩
+    if (!action || typeof action !== 'object') return false;
     const p = pluginById(room.mounted.gameId);
     if (!p) return false;
 
@@ -2888,15 +3026,20 @@ class RoomController {
     return pluginById(room.mounted.gameId).viewFor(room.mounted.state, memberId);
   }
 
-  /** 以加入端身份连上房主。resolve 时已经拿到自己的身份和房间快照。 */
-  joinAsClient(transport, name){
+  /** 以加入端身份连上房主。resolve 时已经拿到自己的身份和房间快照。
+
+      `token` 是上一场房主发的座位凭据。带上它，房主就能把这次连接接回**原来那个
+      座位**（分数、狼人杀的身份、棋盘上的座位都还在），而不是新建一个成员把旧的
+      晾成幽灵。房主认不出这枚 token 时它就是个普通字符串，什么也不影响 ——
+      所以不需要先确认「对面是不是原来那个房间」。 */
+  joinAsClient(transport, name, { token } = {}){
     if (transport && transport !== this.transport){
       this.transport = transport;
       this._bindTransport(transport);
     }
     this._mode = 'client';
     const ready = new Promise(resolve => { this._joinResolve = resolve; });
-    this.transport.send({ t:'join', name });
+    this.transport.send({ t:'join', name, token: token || null });
     return ready;
   }
 
@@ -2918,6 +3061,10 @@ class RoomController {
 
   /* ---- 协议入口 ---- */
   _onMessage(msg, from){
+    /* 所有入站报文都从这一个口子进。线上的东西没有可信度可言 —— 对端发一句字面量
+       `null`（JSON.parse 不报错，出来的就是 null），下面 switch(msg.t) 立刻抛
+       TypeError。这是**远端能触发的**，不是洁癖。 */
+    if (!msg || typeof msg !== 'object') return;
     if (this._mode === 'host') this._onHostMessage(msg, from);
     else if (this._mode === 'client') this._onClientMessage(msg);
   }
@@ -2926,10 +3073,15 @@ class RoomController {
     switch (msg.t){
       case 'join': {
         if (!this.room || this._memberOfPeer.has(from)) return;
-        const m = makeMember({ name: msg.name });
-        this.room.members.push(m);
+        const m = this._claimSeat(msg) || makeMember({ name: msg.name });
+        if (!this.room.members.includes(m)) this.room.members.push(m);
+        // 这个人要是换了台设备（或换了连接），旧 peer 的映射得清掉，
+        // 不然 _peerOfMember 会一直指着一个再也发不出消息的 peerId
+        const stale = this._peerOfMember.get(m.id);
+        if (stale && stale !== from) this._memberOfPeer.delete(stale);
         this._memberOfPeer.set(from, m.id);
         this._peerOfMember.set(m.id, from);
+        m.connected = true;
         this.transport.send({
           t: 'welcome',
           you: { id:m.id, name:m.name, token:m.token },
@@ -3091,7 +3243,9 @@ const GP = {
   makeMember, makeRoom, esc, initials, draw, drawWeighted, shuffleWith, nextSeed,
   lines, summarize,
   builtinPresets, presetsFor, isPreset, loadMyPresets, saveMyPresets,
-  presetToCode, presetFromCode, PRESET_KEY, memoryStore, presetStore,
+  presetToCode, presetFromCode, PRESET_KEY, memoryStore, appStore,
+  ROOM_KEY, ROOM_TTL_MS, ROOM_MAX_CHARS, saveRoom, loadSavedRoom, dropSavedRoom,
+  ME_KEY, loadMyIdentity, saveMyIdentity,
   packSignal, unpackSignal, b64urlEncode, b64urlDecode, readSignalFromHash, signalUrl,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = GP;
@@ -3611,7 +3765,13 @@ class WebRtcTransport extends Transport {
       // 手机锁屏、走开、切后台，连接往往先变成 disconnected/failed，
       // dc.onclose 要过很久才来 —— 所以要在这儿就报「人没了」，
       // 不然房主会对着一个已经废掉的连接干等
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this._peerState(peerId, false);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed'){
+        // open 也得跟着落下来。peerIds 只收 open 的对端，这儿不落的话，
+        // 一条已经废掉的连接会继续被当成「还活着的对端」——房间层都把人标成
+        // 离线了，传输层却还说他占着座位，认座那一步就会误判成「座上有人」
+        entry.open = false;
+        this._peerState(peerId, false);
+      }
       else if (pc.connectionState === 'connected') this._peerState(peerId, true);
     });
     return entry;
@@ -3766,7 +3926,8 @@ const net = (typeof RTCPeerConnection === 'function') ? new WebRtcTransport() : 
 const ctrl = new RoomController({ transport: net || new LocalTransport() });
 
 let screen = 'home';        // home | room | joining | relay
-let joinName = '';
+/* 名字也记在本地：重扫一次码进来时不用重新输，认座时也就顺带认对了名字 */
+let joinName = (loadMyIdentity(appStore()) || {}).name || '';
 let presetFor = null;
 let pairing = null;         // 房主侧：当前这张邀请 { status, peerId, url, qr, error }
 let joinState = null;       // 加入端侧：{ status, answer, error }
@@ -3774,6 +3935,9 @@ let relayState = null;      // 转送页侧：{ status: sending | ok | lost }
 let selfCheck = null;       // 自检结果，非空时以浮层显示
 let picker = null;          // 方案浮层：{ gameId, code, msg }
 let skipPicker = false;     // 「有人不在了？」浮层：替掉线的人走那一步
+let restoredNote = false;   // 这次是刷新后接回来的房间：顶上要说一句「大家得重新扫码」
+let restoredDropped = null; // 降级恢复时丢掉的是哪一款游戏（画面太大没存下）
+let dissolveAsk = false;    // 「散伙」的两步确认
 /* 本端界面自己的临时状态。换了游戏就清掉 —— 不然上一局选的格子会残留到下一局。 */
 let localUi = {};
 /* 不过里面有些键是「一次操作用完就该忘掉」的（棋盘上选中的那个格子），
@@ -3799,6 +3963,32 @@ function toast(msg){
   el.className = 'show';
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.className = ''; }, 1800);
+}
+
+/* ---------- 房间持久化：刷新之后还认得回来 ----------
+   房主这边要能活过一次刷新（成员、记分牌、打到一半的那局都还在），
+   加进端那边要记得自己原来坐哪个座位（token）。
+
+   写必须节流：你画我猜每抬一次笔就 _notify() 一次，而它的 strokes 最坏能到
+   几百 KB，每来一个动作就同步序列化一遍，画笔直接就卡住了。 */
+let saveTimer = null;
+
+function saveNow(){
+  if (saveTimer){ clearTimeout(saveTimer); saveTimer = null; }
+  saveRoom(appStore(), ctrl);
+}
+function scheduleSave(){
+  if (ctrl.mode !== 'host' || !ctrl.room) return;
+  if (saveTimer) return;                       // 已经排上了，合并掉
+  saveTimer = setTimeout(() => { saveTimer = null; saveRoom(appStore(), ctrl); }, 400);
+}
+/* 手机切后台被系统回收是常态，光靠那个 400ms 的定时器会丢掉最后几下 ——
+   这两个口子必须同步写完。pagehide 是最后的机会，visibilitychange 更早，都挂上。 */
+if (typeof addEventListener === 'function'){
+  addEventListener('pagehide', saveNow);
+  addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveNow();
+  });
 }
 
 /* ---------- 扫码配对 ---------- */
@@ -3873,7 +4063,10 @@ if (net){
   // 通道打通 —— 加入端这时才正式进房间（数据通道必须先活着）
   net.onOpen(() => {
     if (screen === 'joining' && ctrl.mode !== 'client'){
-      ctrl.joinAsClient(net, joinName.trim() || '玩家');
+      // 捎上上次的 token：对面要是认得，这次就连回原来那个座位
+      const mine = loadMyIdentity(appStore());
+      ctrl.joinAsClient(net, joinName.trim() || '玩家', { token: mine && mine.token })
+          .then(me => { saveMyIdentity(appStore(), me); render(); });
       // 把邀请码从地址栏抹掉：不然用户一刷新，会拿着一张已经用过的邀请重走一遍
       try { history.replaceState(null, '', location.pathname + location.search); } catch {}
       screen = 'room';
@@ -3918,6 +4111,18 @@ if (bootSignal){
   }
 }
 
+/* 没带着信令启动 = 不是来加入别人的，那就看看上一场自己的房间还在不在。
+   在的话直接落回房间页 —— 误触刷新、手机把标签页回收，一桌人正等着，
+   这种时候不该让人再点一次「继续」。 */
+if (!bootSignal){
+  const saved = loadSavedRoom(appStore());
+  if (saved && ctrl.restore(saved)){
+    screen = 'room';
+    restoredNote = true;
+    restoredDropped = saved.dropped;
+  }
+}
+
 /* ---------- 事件代理：所有按钮都走 data-act ---------- */
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]');
@@ -3934,8 +4139,25 @@ document.addEventListener('click', (e) => {
   }
 
   switch (act.t){
-    case 'goHome':      screen = 'home'; skipPicker = false; break;
-    case 'create':      ctrl.createRoom(act.name || '房主'); screen = 'room'; break;
+    /* 回首页**不**动房间 —— 房间还在，首页会给一个「回到房间」的入口。
+       真正的出口是「散伙」。 */
+    case 'goHome':      screen = 'home'; skipPicker = false; dissolveAsk = false; break;
+    /* 刚建完房就刷新也该回到这个房，所以不等节流那 400ms，直接写完 */
+    case 'create':      ctrl.createRoom(act.name || '房主'); screen = 'room'; saveNow(); break;
+    case 'backRoom':    screen = 'room'; break;
+    case 'closeRestored': restoredNote = false; restoredDropped = null; break;
+    case 'dissolve':    dissolveAsk = true; break;
+    case 'dissolveNo':  dissolveAsk = false; break;
+    case 'dissolveYes': {
+      // 散伙是真出口：存储也要清掉，不然刷新一下它又回来了
+      dissolveAsk = false;
+      restoredNote = false;
+      restoredDropped = null;
+      ctrl.closeRoom();
+      dropSavedRoom(appStore());
+      screen = 'home';
+      break;
+    }
     case 'invite':      openInvite(); return;          // 自己会 render
     case 'closeInvite': pairing = null; break;
     case 'selfCheck':     runSelfCheck(); return;      // 自己会 render
@@ -3966,9 +4188,10 @@ document.addEventListener('click', (e) => {
       skipPicker = false;      // 浮层里那些「谁卡住了」是上一局的事，别带过去
       if (act.t === 'start'){ ctrl.startGame(act.game); screen = 'room'; }
       else { ctrl.switchGame(act.game); }
+      saveNow();               // 开了新局，这一刻的状态值得立刻落盘
       break;
     }
-    case 'endGame':     ctrl.endGame(); screen = 'home'; break;
+    case 'endGame':     ctrl.endGame(); saveNow(); break;
     case 'editOptions':
     case 'editPool': {
       // 预填当前内容：插件自己知道怎么把 state 写回文本
@@ -4015,7 +4238,13 @@ document.addEventListener('input', (e) => {
   if (k) localUi[k] = e.target.value;
 });
 
-ctrl.subscribe(render);
+ctrl.subscribe(() => {
+  // 有人接回来了，「大家得重新扫码」那条就不用再挂着
+  if (restoredNote && ctrl.room
+      && ctrl.room.members.some(m => !m.isHost && m.connected)) restoredNote = false;
+  scheduleSave();
+  render();
+});
 
 /* 插件 render / afterRender 拿到的同一份 ctx。两处共用一份，
    是为了让「渲染时看到的东西」和「后渲染时看到的东西」不会各说各话。 */
@@ -4566,6 +4795,19 @@ function homeHTML(){
     <h1>围响 GatherPop</h1>
     <p class="sub">聚在一起不知道玩什么的时候，拿出来就能用。</p>
 
+    ${ctrl.room ? `
+    <div class="card" style="margin-bottom:8px">
+      <div class="row">
+        <div class="info" style="flex:1">
+          <div class="nm">房间还在</div>
+          <div class="nt">${ctrl.room.members.length} 人 · ${
+            ctrl.room.members.filter(m => !m.isHost && m.connected).length
+          } 人在线${ctrl.room.currentGameId ? ' · 正在玩' + esc(pluginById(ctrl.room.currentGameId).name) : ''}</div>
+        </div>
+        <button class="btn primary" data-act='{"t":"backRoom"}'>回到房间</button>
+      </div>
+    </div>` : ''}
+
     <div class="card" style="margin-bottom:8px">
       <div class="row">
         <input id="joinName" class="btn ghost" style="flex:1;min-width:120px;text-align:left"
@@ -4665,8 +4907,36 @@ function roomHTML(){
           ${ctrl.isHost && net
             ? `<button class="btn sm primary" data-act='{"t":"invite"}'>邀请玩家</button>`
             : ''}
+          ${ctrl.isHost
+            ? `<button class="btn sm ghost" data-act='{"t":"dissolve"}'>散伙</button>`
+            : ''}
         </div>
       </div>
+
+      ${dissolveAsk ? `
+      <div class="card" style="border-color:var(--warn)">
+        <div class="row" style="justify-content:space-between">
+          <div class="info" style="flex:1">
+            <div class="nm">真的散伙？</div>
+            <div class="nt">记分牌、今晚玩过哪些局、这一局，都会没掉，撤不回来。</div>
+          </div>
+          <button class="btn sm ghost" data-act='{"t":"dissolveNo"}'>算了</button>
+          <button class="btn sm primary" data-act='{"t":"dissolveYes"}'>确定散伙</button>
+        </div>
+      </div>` : ''}
+
+      ${restoredNote ? `
+      <div class="card" style="border-color:var(--accent)">
+        <div class="row" style="justify-content:space-between">
+          <div class="info" style="flex:1">
+            <div class="nm">房间接回来了</div>
+            <div class="nt">
+              成员、记分牌和这一局都还在。但刷新把连接断了，大家得<b>重新扫一次码</b>进来。${restoredDropped ? ` 上一局（${esc((pluginById(restoredDropped) || {}).name || restoredDropped)}）画面太大，没能留下来。` : ''}
+            </div>
+          </div>
+          <button class="btn sm ghost" data-act='{"t":"closeRestored"}'>知道了</button>
+        </div>
+      </div>` : ''}
 
       <div class="memberbar">${members}</div>
       <div class="switchbar">${tabs}</div>

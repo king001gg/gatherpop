@@ -131,20 +131,44 @@ function uiSrcWithSeam(src){
   return out;
 }
 
-function boot({ hash = '', BroadcastChannel: Bus } = {}){
+/** 页面里的 localStorage（Node 里没有）。存房间那条路要靠它跨「刷新」活下来。 */
+function memStore(seed = {}){
+  const m = { ...seed };
+  return {
+    getItem: (k) => (k in m ? m[k] : null),
+    setItem: (k, v) => { m[k] = String(v); },
+    removeItem: (k) => { delete m[k]; },
+    has: (k) => k in m,
+  };
+}
+
+/** 拿一份存好的房间，再起一个「新页面」—— 就是刷新本身。
+    跟真刷新一样：同一个 localStorage，全新的控制器和全新的界面状态。 */
+function bootAfterRefresh(page){
+  return boot({ store: page.store });
+}
+
+function boot({ hash = '', BroadcastChannel: Bus, store = null } = {}){
   const dom = fakeDom();
   const location = { origin:'https://x.test', pathname:'/', search:'', hash };
   const history = { replaceState: () => { location.hash = ''; } };
   // prompt 的返回值可以逐次设定 —— 「粘链接进来」那条路要靠它
   let prompted = null;
   const exposed = {};
+  /* 真实页面里 localStorage 和 window.addEventListener 都是现成的。
+     这里显式注入：注入 localStorage 之后「存了再刷新」才测得出来，
+     注入 addEventListener 之后 pagehide 那条落盘路径才走得到。 */
+  const ls = store || memStore();
+  const winListeners = {};
   const factory = new Function(
     'document', 'prompt', 'setTimeout', 'clearTimeout', 'RTCPeerConnection', 'BroadcastChannel',
-    'location', 'history', '__expose',
+    'location', 'history', '__expose', 'localStorage', 'addEventListener',
     coreSrc + '\n' + qrSrc + '\n' + netSrc + '\n' + uiSrcWithSeam(uiSrc) + '\n;return GP;'
   );
   const GP = factory(dom.document, () => prompted, track, untrack,
-                     FakePeerConnection, Bus, location, history, exposed);
+                     FakePeerConnection, Bus, location, history, exposed, ls,
+                     (t, fn) => { (winListeners[t] = winListeners[t] || []).push(fn); });
+  const fire = (t) => { for (const fn of winListeners[t] || []) fn(); };
   const ctrl = () => exposed.ctrl;
 
   const click = (act) => {
@@ -167,6 +191,7 @@ function boot({ hash = '', BroadcastChannel: Bus } = {}){
     for (const fn of el.handlers.keydown) fn({ key });
   };
   return { GP, ctrl, dom, click, type, press, setPrompt: (v) => { prompted = v; },
+           store: ls, fire,
            html: () => dom.byId.app.innerHTML };
 }
 
@@ -685,4 +710,143 @@ test('换游戏时浮层收掉 —— 谁卡住了是上一局的事', () => {
   assert.match(html(), /class="overlay"/);
   click({ t:'switch', game:'dice' });
   assert.doesNotMatch(html(), /class="overlay"/);
+});
+
+/* ─────────── 刷新之后：房间接回来 ───────────
+   刷新即散伙是聚会现场代价最大的毛病 —— 房主手一滑，一桌人正等着，
+   成员、记分牌、打到一半的那局全归零。 */
+
+/* 房间页独有的标记。别拿「记分牌」这个词当判据 —— 首页也列着一款叫「记分牌」的
+   游戏，用它判「在不在房间里」的话，回没回去都算通过。 */
+const ROOM_MARK = /记分牌挂在房间上/;
+
+/** 建一个 2 人房间并真存进 localStorage，返回的那个 page 就是「刷新前那一页」 */
+function hostedRoom(){
+  const page = boot();
+  page.click({ t:'create', name:'小明' });
+  const c = page.ctrl();
+  const guest = page.GP.makeMember({ name:'小红' });
+  c.room.members.push(guest);
+  c.room.scores[guest.id] = 5;
+  c.room.history.push({ gameId:'dice', endedAt: 1, summary:'第 1 轮' });
+  page.click({ t:'start', game:'dice' });
+  return { page, c, guest, guestId: guest.id };
+}
+
+test('★ 刷新之后直接落回房间，而不是被丢回首页重来一遍', () => {
+  const { page, c, guestId } = hostedRoom();
+
+  const again = bootAfterRefresh(page);          // —— 刷新 ——
+
+  assert.match(again.html(), ROOM_MARK, '应当已经在房间里');
+  assert.doesNotMatch(again.html(), /建个房间/, '不该退回首页');
+  assert.equal(again.ctrl().room.scores[guestId], 5, '分数要一分不差地跟回来');
+  assert.equal(again.ctrl().room.history.length, 1, '今晚玩过哪些局也要在');
+  assert.equal(again.ctrl().room.mounted.gameId, 'dice', '打到一半的那局还在');
+  assert.equal(again.ctrl().room.roomId, c.room.roomId, '还是同一个房间');
+});
+
+test('接回来的那一刻，除了房主人人都标成离线 —— 刷新把连接都断了，这是事实', () => {
+  const { page, guestId } = hostedRoom();
+  const again = bootAfterRefresh(page);
+  const room = again.ctrl().room;
+  assert.equal(room.members.find(m => m.id === guestId).connected, false);
+  assert.equal(room.members.find(m => m.isHost).connected, true);
+});
+
+test('顶上挂着「房间接回来了」，并且说清大家得重新扫一次码', () => {
+  const { page } = hostedRoom();
+  const again = bootAfterRefresh(page);
+  assert.match(again.html(), /房间接回来了/);
+  assert.match(again.html(), /重新扫一次码/, '不说明白的话，房主会以为连接自己会回来');
+});
+
+test('有人接回来了，那条提示就自己收掉', () => {
+  const { page, guestId } = hostedRoom();
+  const again = bootAfterRefresh(page);
+  again.ctrl().setConnected(guestId, true);
+  assert.doesNotMatch(again.html(), /房间接回来了/, '人都回来了还挂着这句话就是在骗人');
+});
+
+test('提示上的「知道了」点掉之后不再出现', () => {
+  const { page } = hostedRoom();
+  const again = bootAfterRefresh(page);
+  again.click({ t:'closeRestored' });
+  assert.doesNotMatch(again.html(), /房间接回来了/);
+});
+
+test('带着邀请码启动时不会先跳回自己的房间 —— 那是来加入别人的', () => {
+  const { page } = hostedRoom();
+  const guest = boot({ store: page.store, BroadcastChannel: makeBus(), hash: '#o=这不是一个合法的包' });
+  assert.equal(guest.ctrl().room, null, '不该把上一场自己的房间接回来');
+  assert.doesNotMatch(guest.html(), ROOM_MARK);
+});
+
+test('散伙要两步：先问一句，点「算了」什么都不动', () => {
+  const { page, c } = hostedRoom();
+  page.click({ t:'dissolve' });
+  assert.match(page.html(), /真的散伙/);
+  assert.match(page.html(), /撤不回来/);
+
+  page.click({ t:'dissolveNo' });
+  assert.doesNotMatch(page.html(), /真的散伙/);
+  assert.ok(c.room, '房间还得在');
+  assert.ok(page.store.has(page.GP.ROOM_KEY), '存档也得还在');
+});
+
+test('★ 确定散伙之后存档清空 —— 不清的话刷新一下它又回来了', () => {
+  const { page } = hostedRoom();
+  page.click({ t:'dissolve' });
+  page.click({ t:'dissolveYes' });
+
+  assert.equal(page.ctrl().room, null);
+  assert.match(page.html(), /建个房间/, '回首页');
+  assert.equal(page.store.has(page.GP.ROOM_KEY), false);
+
+  const again = bootAfterRefresh(page);
+  assert.doesNotMatch(again.html(), ROOM_MARK, '刷新也不该再活过来');
+});
+
+test('从房间点回首页，首页给得出「回到房间」—— 不然这房间就没有门了', () => {
+  const { page, c } = hostedRoom();
+  page.click({ t:'goHome' });
+  assert.match(page.html(), /回到房间/);
+  assert.equal(c.room, page.ctrl().room, '回首页不该把房间弄没');
+
+  page.click({ t:'backRoom' });
+  assert.match(page.html(), ROOM_MARK);
+});
+
+test('结束这一局之后留在房间里挑下一款，而不是被踢回首页', () => {
+  const { page } = hostedRoom();
+  page.click({ t:'endGame' });
+  assert.match(page.html(), ROOM_MARK, '房间才是大厅，结束一局该留在这儿');
+  assert.doesNotMatch(page.html(), /建个房间/);
+});
+
+test('名字记在本地，重新扫码进来时不用再输一遍', () => {
+  const first = boot();
+  first.store.setItem(first.GP.ME_KEY, JSON.stringify({ token:'t_1', name:'小红' }));
+  const again = bootAfterRefresh(first);
+  assert.match(again.html(), /value="小红"/, '昵称应当预填好');
+});
+
+test('切后台 / 离开页面要立刻落盘 —— 手机被回收是常态，光靠节流会丢掉最后几下', () => {
+  const page = boot();
+  page.click({ t:'create', name:'小明' });
+  page.store.removeItem(page.GP.ROOM_KEY);      // 抹掉，看它会不会自己写回来
+
+  const c = page.ctrl();
+  c.room.scores['m_后来改的'] = 3;
+  c._notify();                                   // 只排上了节流，还没落盘
+  assert.equal(page.store.has(page.GP.ROOM_KEY), false, '这一步不该已经写下去（节流的用意）');
+
+  page.dom.document.visibilityState = 'hidden';
+  page.fire('visibilitychange');
+  assert.ok(page.store.has(page.GP.ROOM_KEY), '切到后台就该写下去');
+
+  page.store.removeItem(page.GP.ROOM_KEY);
+  page.fire('pagehide');
+  assert.ok(page.store.has(page.GP.ROOM_KEY), 'pagehide 是最后的机会，必须同步写完');
+  assert.match(page.store.getItem(page.GP.ROOM_KEY), /m_后来改的/, '写的得是当下这一刻的状态');
 });
