@@ -16,9 +16,11 @@ jobs:
         # 这里测的是**测试套件**能跑 —— engines 声明的 >=20 靠这个矩阵兑现
         node-version: ['20', '22', '24']
     steps:
-      - uses: actions/checkout@v4
+      # 用 v5：v4 的动作运行时绑在 Node 20 上，GitHub 已经在告警
+      # 「Node.js 20 is deprecated ... forced to run on Node.js 24」
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
