@@ -1,0 +1,15 @@
+# 依赖 —— 只有二维码测试当对照用，不进交付物（交付物是零依赖的 index.html）
+node_modules/
+
+# 编辑器
+.idea/
+.vscode/
+*.iml
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 日志与临时文件
+*.log
+npm-debug.log*

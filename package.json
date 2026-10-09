@@ -1,0 +1,24 @@
+{
+  "name": "gatherpop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "围响 GatherPop —— 聚会场景下的轻量游戏工具箱。单文件、零依赖、零构建",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/king001gg/gatherpop.git"
+  },
+  "homepage": "https://github.com/king001gg/gatherpop",
+  "keywords": ["party-game", "webrtc", "p2p", "offline-first", "zero-dependency"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "start": "node serve.mjs"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4"
+  }
+}

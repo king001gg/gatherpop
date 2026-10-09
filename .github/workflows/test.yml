@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 交付物本身零依赖零构建，随便哪个版本双击都能跑。
+        # 这里测的是**测试套件**能跑 —— engines 声明的 >=20 靠这个矩阵兑现
+        node-version: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      # 两个 devDependency 只给二维码测试当对照用，不进交付物
+      - run: npm ci
+
+      - run: npm test

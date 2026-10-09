@@ -1,0 +1,4694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#12101a">
+<title>围响 GatherPop</title>
+<style>
+  :root{
+    --bg:#12101a; --bg-2:#1b1826; --bg-3:#241f33; --line:#332c46;
+    --fg:#efeaf7; --fg-2:#a79fc0; --fg-3:#6f6789;
+    --accent:#7c5cff; --accent-2:#a78bfa;
+    --ok:#3ddc97; --warn:#ffb454; --bad:#ff6b6b;
+    --r:14px; --r-sm:10px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    overscroll-behavior:none;
+  }
+  #app{max-width:640px;margin:0 auto;padding:16px 16px 40px;min-height:100%}
+  h1{font-size:22px;margin:0 0 2px;letter-spacing:.5px}
+  h2{font-size:13px;margin:22px 0 10px;color:var(--fg-3);font-weight:600;letter-spacing:1px}
+  .sub{color:var(--fg-2);font-size:13px;margin:0 0 20px}
+  .muted{color:var(--fg-2)}
+  .dim{color:var(--fg-3)}
+
+  .btn{
+    appearance:none;border:1px solid var(--line);background:var(--bg-3);color:var(--fg);
+    padding:10px 14px;border-radius:var(--r-sm);font-size:14px;font-family:inherit;
+    cursor:pointer;transition:transform .06s,border-color .15s,background .15s;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.primary:hover{background:var(--accent-2)}
+  .btn.ghost{background:transparent}
+  .btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+  .btn.sm{padding:6px 10px;font-size:13px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+  .card{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+  .game{
+    background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r);
+    padding:14px;cursor:pointer;transition:border-color .15s,transform .06s;
+  }
+  .game:hover{border-color:var(--accent)}
+  .game:active{transform:scale(.98)}
+  .game .ico{font-size:24px;line-height:1}
+  .game .nm{font-weight:600;margin-top:8px}
+  .game .mt{color:var(--fg-3);font-size:12px;margin-top:2px}
+
+  /* ---- room shell ---- */
+  .shell{display:flex;flex-direction:column;gap:12px}
+  .memberbar{display:flex;gap:6px;overflow-x:auto;padding:2px 0;scrollbar-width:none}
+  .memberbar::-webkit-scrollbar{display:none}
+  .chip{
+    flex:0 0 auto;display:flex;align-items:center;gap:6px;
+    background:var(--bg-3);border:1px solid var(--line);border-radius:999px;
+    padding:5px 11px 5px 5px;font-size:13px;white-space:nowrap;
+  }
+  .chip .av{
+    width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+    font-size:11px;font-weight:700;color:#fff;background:var(--accent);
+  }
+  .chip.off{opacity:.45}
+  .chip .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+  .chip.off .dot{background:var(--fg-3)}
+
+  .switchbar{display:flex;gap:6px;overflow-x:auto;padding:2px 0;scrollbar-width:none}
+  .switchbar::-webkit-scrollbar{display:none}
+  .tab{
+    flex:0 0 auto;background:transparent;border:1px solid var(--line);color:var(--fg-2);
+    padding:6px 12px;border-radius:999px;font-size:13px;font-family:inherit;cursor:pointer;
+  }
+  .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+
+  .score{display:flex;flex-direction:column;gap:6px}
+  .srow{display:flex;align-items:center;gap:8px}
+  .srow .nm{flex:1;font-size:14px}
+  .srow .val{font-variant-numeric:tabular-nums;font-weight:700;min-width:34px;text-align:right}
+
+  .slot{min-height:180px}
+  .big{font-size:52px;font-weight:800;text-align:center;padding:18px 0;font-variant-numeric:tabular-nums;letter-spacing:2px}
+  .word{
+    text-align:center;font-size:34px;font-weight:800;letter-spacing:6px;
+    padding:26px 0;color:var(--accent-2);
+  }
+  .banner{padding:10px 12px;border-radius:var(--r-sm);font-size:13px;border:1px solid var(--line)}
+  .banner.warn{border-color:var(--warn);color:var(--warn)}
+  .banner.ok{border-color:var(--ok);color:var(--ok)}
+  .order{display:flex;gap:6px;flex-wrap:wrap}
+  .oitem{padding:4px 10px;border-radius:999px;background:var(--bg-3);border:1px solid var(--line);font-size:13px}
+  .oitem.now{border-color:var(--accent);color:var(--accent-2);font-weight:600}
+  .oitem.out{opacity:.4;text-decoration:line-through}
+  .hist{font-size:13px;color:var(--fg-2);display:flex;flex-direction:column;gap:4px}
+  .note{font-size:12px;color:var(--fg-3);line-height:1.6}
+  .privacy li{margin:3px 0}
+
+  .tab.off{opacity:.4}
+  #toast{
+    position:fixed;left:50%;bottom:28px;transform:translate(-50%,14px);
+    background:var(--bg-3);border:1px solid var(--warn);color:var(--warn);
+    padding:9px 16px;border-radius:999px;font-size:13px;
+    opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:9;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+
+  /* ---------- 扫码配对 ---------- */
+  .overlay{
+    position:fixed;inset:0;z-index:20;overflow:auto;
+    background:rgba(10,8,16,.9);padding:20px 16px 40px;
+  }
+  .overlay .inner{max-width:420px;margin:0 auto}
+  /* 二维码必须衬在白底上，深色主题下才能被相机认出来 */
+  .qr{background:#fff;border-radius:var(--r);padding:10px;margin:12px auto}
+  .qr svg{width:100%;height:auto;display:block;border-radius:6px}
+  .steps{list-style:none;padding:0;margin:14px 0 0}
+  .steps li{counter-increment:s;position:relative;padding-left:26px;margin:7px 0;
+            font-size:13px;color:var(--fg-2);line-height:1.5}
+  .steps{counter-reset:s}
+  .steps li::before{
+    content:counter(s);position:absolute;left:0;top:1px;width:18px;height:18px;
+    border-radius:50%;background:var(--accent);color:#fff;
+    font-size:11px;line-height:18px;text-align:center;font-weight:600;
+  }
+  .linkbox{
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;
+    word-break:break-all;background:var(--bg-3);border:1px solid var(--line);
+    border-radius:var(--r-sm);padding:8px;max-height:110px;overflow:auto;user-select:all;
+  }
+  textarea.paste{
+    width:100%;min-height:66px;background:var(--bg-3);border:1px solid var(--line);
+    border-radius:var(--r-sm);color:var(--fg);padding:8px;font-size:12px;
+    font-family:inherit;resize:vertical;
+  }
+  .spinner{
+    width:18px;height:18px;border-radius:50%;display:inline-block;vertical-align:-3px;
+    border:2px solid var(--line);border-top-color:var(--accent);
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .diag{
+    display:flex;gap:8px;align-items:baseline;padding:7px 0;
+    border-bottom:1px solid var(--line);font-size:12px;
+  }
+  .diag:last-child{border-bottom:0}
+  .diag .mk{flex:0 0 14px;text-align:center;font-weight:700}
+  .diag .lb{flex:0 0 96px;color:var(--fg-3)}
+  .diag .vl{flex:1;color:var(--fg-2);line-height:1.5;word-break:break-word}
+  .diag.ok   .mk{color:#5fd39a}
+  .diag.warn .mk{color:#e0b050}
+  .diag.bad  .mk{color:#e87070}
+  .diag.bad  .vl{color:#e87070}
+
+  /* 整屏记分牌 */
+  .board{display:flex;flex-direction:column;gap:6px}
+  .srow{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;
+    background:var(--bg-3);border:1px solid var(--line);border-radius:var(--r-sm);
+  }
+  .srow.lead{border-color:var(--accent)}
+  .srow .rk{flex:0 0 22px;text-align:center;color:var(--fg-3);font-size:13px}
+  .srow .nm{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .srow .val{flex:0 0 46px;text-align:center;font-size:20px;font-weight:700;
+             font-variant-numeric:tabular-nums}
+  .srow .btn.sm{padding:2px 10px;font-size:15px;line-height:1.2}
+
+  /* 方案列表 */
+  .preset{
+    display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:6px;
+    background:var(--bg-3);border:1px solid var(--line);border-radius:var(--r-sm);
+  }
+  .preset .info{flex:1;min-width:0}
+  .preset .nm{font-weight:600;font-size:13px}
+  .preset .nt{font-size:11px;color:var(--fg-3);margin-top:2px}
+  .tag{
+    font-size:10px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);
+    color:var(--fg-3);flex:0 0 auto;
+  }
+  .tag.mine{border-color:var(--accent);color:var(--accent)}
+
+  /* 棋盘：五子棋 / 象棋 / 国际象棋共用 */
+  .gboard{
+    display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
+    border-radius:var(--r-sm);overflow:hidden;margin:0 auto;width:100%;max-width:430px;
+  }
+  .gcell{
+    aspect-ratio:1;background:var(--bg-3);display:flex;align-items:center;
+    justify-content:center;font-size:13px;line-height:1;user-select:none;
+  }
+  .gcell.play{cursor:pointer;background:var(--bg-2, #24203a)}
+  .gcell.play:active{background:var(--accent)}
+  .gcell.win{background:var(--accent)}
+  .gcell.last{box-shadow:inset 0 0 0 2px var(--accent)}
+  .gcell.sel{box-shadow:inset 0 0 0 2px #5fd39a}
+  .gcell.can{background:#2f4a3c}
+  .gcell.tgt{cursor:pointer;box-shadow:inset 0 0 0 2px #5fd39a}
+
+  /* 棋盘格子：国际象棋 / 象棋共用深浅底 */
+  .gboard.chess .gcell{font-size:26px;line-height:1}
+  .gcell.lt{background:#e8e2d4;color:#1a1626}
+  .gcell.dk{background:#7d7392;color:#1a1626}
+  .gcell.lt.can,.gcell.dk.can{cursor:pointer}
+  .gcell.lt.play{background:var(--accent)}
+  .gcell.sel{box-shadow:inset 0 0 0 3px #5fd39a}
+  .gcell.tgt{box-shadow:inset 0 0 0 3px #5fd39a;cursor:pointer}
+  .gcell.win{background:var(--accent)}
+
+  /* 象棋：棋子是圆牌，底色统一 —— 不像国际象棋那样靠深浅格定位 */
+  .gboard.xq .gcell{background:#d9c9a3;font-size:22px}
+  .gboard.xq .gcell.can,.gboard.xq .gcell.tgt{cursor:pointer}
+  .gboard.xq .gcell.sel,.gboard.xq .gcell.tgt{box-shadow:inset 0 0 0 3px #5fd39a}
+  .gboard.xq .gcell.last{box-shadow:inset 0 0 0 3px var(--accent)}
+  .qp{
+    width:80%;height:80%;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;background:#f3ead6;box-shadow:0 1px 2px rgba(0,0,0,.35);
+  }
+  .qp.red{color:#b3261e;border:1px solid #b3261e}
+  .qp.blk{color:#1a1626;border:1px solid #1a1626}
+
+  /* 你画我猜 */
+  .dgcanvas{
+    display:block;width:100%;aspect-ratio:1/1;background:#1a1626;
+    border-radius:var(--r-sm);touch-action:none;   /* 不设的话手机上画两笔就变成滚页面 */
+    cursor:crosshair;
+  }
+  .ginput{
+    flex:1;min-width:0;padding:9px 12px;font:inherit;font-size:14px;color:var(--fg);
+    background:var(--bg-3);border:1px solid var(--line);border-radius:var(--r-sm);
+  }
+  .ginput:focus{outline:none;border-color:var(--accent)}
+  .dgcolor{
+    width:30px;height:30px;border-radius:50%;border:2px solid var(--line);
+    padding:0;cursor:pointer;flex:0 0 auto;
+  }
+  .dgcolor.on{border-color:var(--fg);box-shadow:0 0 0 2px var(--accent)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- ==========================================================================
+     核心域（纯逻辑，零 DOM 依赖）
+     —— 这一段可以在 Node 里直接 eval 测试，见 test/core.test.mjs
+     ========================================================================== -->
+<script id="gatherpop-core">
+// ==== CORE:BEGIN ====
+
+/* ---------- 聚会节奏：首页按这个分组，而不是按游戏类型 ---------- */
+const RHYTHM = {
+  WARMUP:  { id:'warmup',  label:'等人 · 暖场',   hint:'十秒一局，不用准备' },
+  TABLE:   { id:'table',   label:'饭前 · 饭后',   hint:'要点注意力，但不占桌子' },
+  SERIOUS: { id:'serious', label:'想认真玩',      hint:'要人数、要规则' },
+  DUO:     { id:'duo',     label:'两人打发时间',  hint:'单机双人 / 联机都行' },
+  TOOL:    { id:'tool',    label:'记分 · 随机',   hint:'工具型，不算游戏' },
+};
+const RHYTHM_ORDER = ['WARMUP','TABLE','SERIOUS','DUO','TOOL'];
+
+/* ---------- 确定性随机：reduce 必须是纯函数，所以随机数也得是纯的 ----------
+   状态里存 seed，每次取随机数就把 seed 推进一格。
+   同样的输入必然得到同样的输出 —— 可测试、可回放。 */
+function nextSeed(s){ return (Math.imul(s, 1664525) + 1013904223) >>> 0; }
+function mulberry32(a){
+  return function(){
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+/** 从一个 seed 取 [0,n) 的整数，并把推进后的 seed 一起返回。纯函数。 */
+function draw(seed, n){
+  const v = Math.floor(mulberry32(seed)() * n);
+  return { value: v, seed: nextSeed(seed) };
+}
+/** 按权重抽一个下标。权重缺省为 1，所以传平权的数组时就是均匀抽取。纯函数。 */
+function drawWeighted(seed, items){
+  if (!items.length) return { value: -1, seed };
+  let total = 0;
+  for (const x of items) total += Math.max(0, (x && x.weight) || 0) || 1;
+  const d = draw(seed, total);
+  let acc = 0;
+  for (let i = 0; i < items.length; i++){
+    acc += Math.max(0, (items[i] && items[i].weight) || 0) || 1;
+    if (d.value < acc) return { value: i, seed: d.seed };
+  }
+  return { value: items.length - 1, seed: d.seed };   // 浮点兜底，理论上到不了
+}
+
+/** 用 seed 做一次 Fisher–Yates，返回新数组和推进后的 seed。纯函数。 */
+function shuffleWith(arr, seed){
+  const a = arr.slice();
+  let s = seed;
+  for (let i = a.length - 1; i > 0; i--){
+    const d = draw(s, i + 1);
+    s = d.seed;
+    const j = d.value;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return { value: a, seed: s };
+}
+
+/** 把用户敲的多行文本切成干净的数组。方案输入到处都要用。 */
+function lines(text, max = 200){
+  return String(text || '')
+    .split('\n').map(s => s.trim()).filter(Boolean).slice(0, max);
+}
+
+/* ---------- 成员 ---------- */
+let _idSeq = 0;
+function makeId(prefix){ _idSeq += 1; return prefix + '_' + _idSeq.toString(36) + Math.floor(Math.random()*1e6).toString(36); }
+
+function makeMember({ id, name, isHost = false }){
+  return {
+    id: id || makeId('m'),
+    name,
+    isHost,
+    connected: true,
+    token: makeId('t'),         // 重连凭据：断线后凭这个认领原身份，不用重新配对
+    joinedAt: Date.now(),
+  };
+}
+
+/* ---------- 房间：整个 App 的聚合根 ----------
+   记分牌挂在这里，不挂在游戏上 —— 这是「跨游戏常驻」的唯一实现方式。 */
+function makeRoom({ roomId, hostName, seed }){
+  const host = makeMember({ name: hostName, isHost: true });
+  return {
+    roomId: roomId || makeId('room'),
+    hostId: host.id,
+    seed: (seed === undefined ? (Date.now() >>> 0) : seed) >>> 0,
+    members: [host],
+    scores: {},                  // memberId -> number，跨游戏保留
+    history: [],                 // RoomEvent[]，今晚玩了哪些局
+    currentGameId: null,
+    mounted: null,               // 当前挂载的 GameSession
+    phase: 'lobby',              // lobby | playing
+  };
+}
+
+/* ---------- 游戏插件契约 ----------
+   render 返回 HTML 字符串、不碰 DOM —— 纯函数，可测。
+   交互统一走 data-act 属性，由外壳代理分发。
+   ★ buildView/render 的入参只有 view，签名里根本拿不到完整 state。
+
+   两处外壳提供的通用机制，做「要输入」的游戏时会用到：
+     · <input data-ui="键">  内容会镜像进 ctx.ui.键。这样别人动一下触发重渲染、
+       整个 innerHTML 被换掉时，你正在打的字不会被抹掉。
+     · 动作里写 "textFrom":"<元素 id>"  提交时把那个框里当前的内容作为
+       action.text 捎上，元素 id 本身不会跟着动作过线。 */
+const GamePlugin = {
+  // —— 必需 ——
+  // id, name, icon, rhythm, minPlayers, maxPlayers
+  // createInitialState({members, preset, seed}) -> state
+  // reduce(state, action)          -> state        纯函数
+  // canApply(state, actorId, act)  -> boolean
+  // viewFor(state, viewerId)       -> view         ★ 裁剪，隐藏信息在这里挡住
+  // render(view, ctx)              -> string(HTML)
+  //                                  ctx = {me, members, isHost, scores?, ui?}
+  //                                  scores 是房间的记分牌，可能缺 —— 插件要自己兜底
+  //                                  ui 是本端界面自己的临时状态（比如棋盘上选了哪个子）。
+  //                                  它是「本机的」不是「房间的」：不进 state、不过网、
+  //                                  不参与 reduce。棋类靠它，否则你选哪颗子对手也看得见。
+  //
+  // —— 可选 ——
+  // summarize(state)   -> string   历史里那一行摘要
+  // presets            -> [{name, note, data}]    官方种子方案
+  // readPreset(text)   -> data|null               把用户敲的文本读成一份配置
+  // presetToText(data) -> string                  反过来，好让人复制走
+  // presetHint         -> string   方案输入框上的提示
+  // uiKeep             -> [键名]   ctx.ui 里哪些键在动作之后要留着（默认全清）
+  // afterRender(view, ctx, root)   ★ 唯一允许碰 DOM 的钩子，见下
+};
+/* afterRender 存在的唯一理由：画布这种东西没法用 HTML 字符串表达 ——
+   得等节点真的挂上去，才能往上画、才能接指针事件。
+   规矩：只有它碰 DOM，而且只碰自己那一块；拿不到节点就安静退出，
+   无头环境里不许抛。ctx 在这里多带一个 submit(action)。
+   你画我猜是唯一用到它的游戏 —— 核心域其余部分照旧零 DOM 依赖。 */
+
+/* ============================ 骰子 ============================ */
+const dicePlugin = {
+  id: 'dice', name: '骰子', icon: '🎲',
+  rhythm: RHYTHM.WARMUP, minPlayers: 1, maxPlayers: -1,
+  createInitialState: ({ seed }) => ({ gameId:'dice', sides:6, seed, rolls:[] }),
+  canApply: () => true,
+  reduce(state, action){
+    if (action.t === 'roll'){
+      const sides = action.sides || state.sides;
+      const d = draw(state.seed, sides);
+      return {
+        ...state, sides, seed: d.seed,
+        rolls: state.rolls.concat([{ by: action.by, value: d.value + 1, sides }]).slice(-12),
+      };
+    }
+    return state;
+  },
+  summarize: (s) => `${s.rolls.length} 次投掷`,
+  // 骰子没有隐藏信息，全体看到同一份
+  viewFor: (state) => state,
+  render(view, ctx){
+    const last = view.rolls[view.rolls.length-1];
+    const face = last ? (last.sides===6 ? ['⚀','⚁','⚂','⚃','⚄','⚅'][last.value-1] : last.value) : '—';
+    const who = last ? (ctx.members.find(m=>m.id===last.by)||{}).name : null;
+    return `
+      <div class="big">${face}</div>
+      <div class="muted" style="text-align:center;margin:-8px 0 16px">
+        ${last ? `${esc(who||'?')} 掷出了 ${last.value}${last.sides===6?'':` / ${last.sides}`}` : '还没有人掷'}
+      </div>
+      <div class="row" style="justify-content:center">
+        <button class="btn primary" data-act='{"t":"roll","sides":6}'>掷 D6</button>
+        <button class="btn" data-act='{"t":"roll","sides":20}'>掷 D20</button>
+      </div>
+      ${view.rolls.length>1 ? `<div class="note" style="margin-top:14px">历史：${
+        view.rolls.slice(0,-1).reverse().slice(0,8).map(r=>r.value).join(' · ')}</div>` : ''}
+    `;
+  },
+};
+
+/* ============================ 转盘 ============================ */
+const DEFAULT_WHEEL_OPTIONS = ['吃火锅','吃烧烤','吃日料','点外卖','随便'];
+
+/** 转盘的官方种子方案。方案市场没有服务端，种子内容就是它的冷启动。 */
+const WHEEL_PRESETS = [
+  { name:'今天吃什么', note:'纠结午饭晚饭的时候转一下',
+    data:{ options:['吃火锅','吃烧烤','吃日料','点外卖','随便吃点'] } },
+  { name:'谁去跑这趟腿', note:'找个倒霉蛋',
+    data:{ options:['我去','你去','他去','猜拳决定','谁都别去'] } },
+  { name:'真心话还是大冒险', note:'饭桌上的老规矩',
+    data:{ options:['真心话','大冒险','真心话','大冒险','免一次'] } },
+  { name:'今晚玩什么', note:'从围响里挑不出来的那一步',
+    data:{ options:['骰子','转盘','谁是卧底','你画我猜','狼人杀'] } },
+];
+
+const wheelPlugin = {
+  id: 'wheel', name: '转盘', icon: '🎯',
+  rhythm: RHYTHM.TOOL, minPlayers: 1, maxPlayers: -1,
+  createInitialState: ({ seed, preset }) => ({
+    gameId:'wheel', seed, result:null, spins:0,
+    options: (preset && preset.options) || DEFAULT_WHEEL_OPTIONS,
+  }),
+  canApply: () => true,
+  reduce(state, action){
+    if (action.t === 'spin' && state.options.length){
+      const d = draw(state.seed, state.options.length);
+      return { ...state, seed:d.seed, spins:state.spins+1, result:{ by:action.by, value:state.options[d.value] } };
+    }
+    if (action.t === 'setOptions'){
+      const opts = lines(action.text, 40);
+      if (opts.length < 2) return state;
+      return { ...state, options: opts, result: null };
+    }
+    return state;
+  },
+  presets: WHEEL_PRESETS,
+  presetHint: '每行一个选项，至少两个',
+  readPreset(text){ const o = lines(text, 40); return o.length >= 2 ? { options:o } : null; },
+  presetToText(data){ return (data && data.options || []).join('\n'); },
+  summarize: (s) => `${s.spins} 次转动`,
+  viewFor: (state) => state,
+  render(view, ctx){
+    const who = view.result ? (ctx.members.find(m=>m.id===view.result.by)||{}).name : null;
+    return `
+      <div class="big" style="font-size:30px">${view.result ? esc(view.result.value) : '转一下'}</div>
+      <div class="muted" style="text-align:center;margin:-8px 0 16px">
+        ${view.result ? `${esc(who||'?')} 转到了这个` : `当前 ${view.options.length} 个选项`}
+      </div>
+      <div class="row" style="justify-content:center">
+        <button class="btn primary" data-act='{"t":"spin"}'>转</button>
+        <button class="btn ghost" data-act='{"t":"editOptions"}'>改选项</button>
+      </div>
+      <div class="note" style="margin-top:14px">${view.options.map(o=>esc(o)).join(' · ')}</div>
+    `;
+  },
+};
+
+/* ============================ 谁是卧底 ============================
+   这是能力空间里最难的一端：有隐藏信息、有回合、每端看到的必须不一样。
+   viewFor 是唯一挡住泄密的地方 —— 它只回传「你自己的词」。 */
+const UNDERCOVER_PAIRS = [
+  { civilian:'可乐',  spy:'雪碧' },
+  { civilian:'奶茶',  spy:'咖啡' },
+  { civilian:'洗发水', spy:'沐浴露' },
+  { civilian:'微信',  spy:'QQ' },
+  { civilian:'火锅',  spy:'麻辣烫' },
+  { civilian:'电影',  spy:'电视剧' },
+  { civilian:'空调',  spy:'风扇' },
+  { civilian:'高铁',  spy:'地铁' },
+];
+
+function spyCountFor(n){ return n <= 5 ? 1 : n <= 8 ? 2 : 3; }
+
+const undercoverPlugin = {
+  id:'undercover', name:'谁是卧底', icon:'🕵️',
+  rhythm: RHYTHM.TABLE, minPlayers: 3, maxPlayers: 12,
+  createInitialState({ members, seed, preset }){
+    const pairs = (preset && preset.pairs) || UNDERCOVER_PAIRS;
+    const ids = members.map(m => m.id);
+
+    const pickPair = draw(seed, pairs.length); let s = pickPair.seed;
+    const pair = pairs[pickPair.value];
+
+    const shuf = shuffleWith(ids, s); s = shuf.seed;
+    const order = shuf.value;
+    const nSpy = Math.min(spyCountFor(ids.length), ids.length - 1);
+    const spyIds = order.slice(0, nSpy);
+
+    const words = {};
+    for (const id of ids) words[id] = spyIds.includes(id) ? pair.spy : pair.civilian;
+
+    return {
+      gameId:'undercover', seed:s, pair, words, spyIds,
+      order, turnIdx:0,
+      phase:'reveal',            // reveal → describe → vote → result
+      seen:{},                   // 谁已经看过自己的词
+      votes:{},                  // voterId -> targetId
+      eliminated:[],
+      winner:null,
+    };
+  },
+  canApply(state, actorId, action){
+    if (state.phase === 'result') return action.t === 'restart';
+    if (action.t === 'seen')     return !state.seen[actorId];
+    if (action.t === 'next')     return state.phase === 'describe' && state.order[state.turnIdx] === actorId;
+    if (action.t === 'startVote')return state.phase === 'describe';
+    if (action.t === 'vote')     return state.phase === 'vote'
+                                        && !state.votes[actorId]
+                                        && actorId !== action.target
+                                        && state.order.includes(action.target);
+    if (action.t === 'tally')    return state.phase === 'vote';
+    return false;
+  },
+  reduce(state, action){
+    switch (action.t){
+      case 'seen': {
+        const seen = { ...state.seen, [action.by]: true };
+        const allSeen = state.order.every(id => seen[id]);
+        return { ...state, seen, phase: allSeen ? 'describe' : 'reveal' };
+      }
+      case 'next':
+        return { ...state, turnIdx: (state.turnIdx + 1) % state.order.length };
+      case 'startVote':
+        return { ...state, phase:'vote', votes:{} };
+      case 'vote':
+        return { ...state, votes: { ...state.votes, [action.by]: action.target } };
+      case 'tally': {
+        const tally = {};
+        for (const target of Object.values(state.votes)) tally[target] = (tally[target]||0)+1;
+        let top = null, topN = -1, tie = false;
+        for (const [id,n] of Object.entries(tally)){
+          if (n > topN){ top = id; topN = n; tie = false; }
+          else if (n === topN){ tie = true; }
+        }
+        // 平票就流局重来，不淘汰任何人
+        const out = tie ? null : top;
+        const eliminated = out ? state.eliminated.concat([out]) : state.eliminated;
+        const alive = state.order.filter(id => !eliminated.includes(id));
+        const spiesLeft = state.spyIds.filter(id => !eliminated.includes(id));
+        let winner = null;
+        if (spiesLeft.length === 0) winner = 'civilian';
+        else if (spiesLeft.length >= alive.length - spiesLeft.length) winner = 'spy';
+        return { ...state, phase:'result', eliminated, winner, tally };
+      }
+      case 'restart':
+        return this.createInitialState({ members: state.order.map(id=>({id})), seed: nextSeed(state.seed) });
+      default:
+        return state;
+    }
+  },
+  summarize: (s) => s.winner ? (s.winner === 'spy' ? '卧底赢' : '平民赢') : '未分胜负',
+  presets: [
+    { name:'日常物品', note:'最好上手的一组，谁都能说两句', data:{ pairs: UNDERCOVER_PAIRS } },
+    { name:'吃吃喝喝', note:'饭桌上用', data:{ pairs:[
+      { civilian:'火锅', spy:'麻辣烫' }, { civilian:'奶茶', spy:'咖啡' },
+      { civilian:'啤酒', spy:'白酒' }, { civilian:'烧烤', spy:'铁板烧' },
+      { civilian:'包子', spy:'饺子' }, { civilian:'可乐', spy:'雪碧' },
+    ] } },
+    { name:'影视综艺', note:'年轻人多的局', data:{ pairs:[
+      { civilian:'电影', spy:'电视剧' }, { civilian:'综艺', spy:'纪录片' },
+      { civilian:'院线片', spy:'网大' }, { civilian:'动漫', spy:'漫画' },
+      { civilian:'弹幕', spy:'评论' }, { civilian:'短视频', spy:'直播' },
+    ] } },
+  ],
+  presetHint: '每行一组，写成「平民词=卧底词」',
+  readPreset(text){
+    const pairs = [];
+    for (const line of lines(text, 60)){
+      const m = line.split(/[=＝:：\s]+/).filter(Boolean);
+      if (m.length >= 2 && m[0] !== m[1]) pairs.push({ civilian: m[0], spy: m[1] });
+    }
+    return pairs.length >= 2 ? { pairs } : null;
+  },
+  presetToText(data){ return (data && data.pairs || []).map(p => `${p.civilian}=${p.spy}`).join('\n'); },
+
+  /* ★ 安全边界：这里只回传观察者有权看到的东西。
+     完整 state 里的 words（所有人的词）和 spyIds 一律不出这道门。 */
+  viewFor(state, viewerId){
+    const reveal = state.phase === 'result';
+    return {
+      gameId: 'undercover',
+      myWord: state.words[viewerId] || null,
+      phase: state.phase,
+      order: state.order,
+      turnIdx: state.turnIdx,
+      turnId: state.order[state.turnIdx],
+      eliminated: state.eliminated,
+      iHaveSeen: !!state.seen[viewerId],
+      seenCount: Object.keys(state.seen).length,
+      // 投票进行中只回传「我自己投了谁」；结果阶段才公布全部票
+      myVote: state.votes[viewerId] || null,
+      votes: reveal ? { ...state.votes } : null,
+      tally: reveal ? (state.tally || null) : null,
+      winner: reveal ? state.winner : null,
+      spyIds: reveal ? state.spyIds : null,
+      pair: reveal ? state.pair : null,
+      spyCount: state.spyIds.length,
+    };
+  },
+  render(view, ctx){
+    const me = ctx.me;
+    const nameOf = id => (ctx.members.find(m=>m.id===id)||{}).name || '?';
+
+    if (view.phase === 'reveal'){
+      const mine = view.iHaveSeen ? `<div class="word">${esc(view.myWord||'')}</div>
+          <div class="muted" style="text-align:center;margin:-14px 0 16px">记住它，别给别人看到</div>`
+        : `<div class="big" style="font-size:20px;padding:34px 0">${esc(view.myWord ? '点下面看你的词' : '等房主分配…')}</div>`;
+      return `${mine}
+        <div class="row" style="justify-content:center">
+          ${view.iHaveSeen ? `<span class="dim">已看 ${view.seenCount}/${view.order.length}</span>`
+                           : `<button class="btn primary" data-act='{"t":"seen"}'>看我的词</button>`}
+        </div>
+        <div class="note" style="margin-top:14px">全场 ${view.order.length} 人，其中 ${view.spyCount} 人是卧底。大家先各自看词，看完自动进入描述阶段。</div>`;
+    }
+
+    if (view.phase === 'describe'){
+      const isMyTurn = view.turnId === me.id;
+      return `
+        <div class="banner ${isMyTurn?'ok':''}" style="margin-bottom:14px">
+          ${isMyTurn ? '轮到你描述了' : `轮到 <b>${esc(nameOf(view.turnId))}</b> 描述`}
+          <div class="dim" style="margin-top:4px">你的词：${esc(view.myWord||'')}</div>
+        </div>
+        <div class="order">${view.order.map((id,i)=>`<span class="oitem ${i===view.turnIdx?'now':''}">${esc(nameOf(id))}</span>`).join('')}</div>
+        <div class="row" style="margin-top:16px;justify-content:center">
+          ${isMyTurn ? `<button class="btn primary" data-act='{"t":"next"}'>我说完了</button>` : ''}
+          <button class="btn" data-act='{"t":"startVote"}'>进入投票</button>
+        </div>`;
+    }
+
+    if (view.phase === 'vote'){
+      return `
+        <div class="banner" style="margin-bottom:14px">
+          投票找出卧底<div class="dim" style="margin-top:4px">你的词：${esc(view.myWord||'')}</div>
+        </div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
+          ${view.order.filter(id=>!view.eliminated.includes(id)).map(id=>{
+            const mine = view.myVote === id;
+            return `<button class="btn ${mine?'primary':''}" ${view.myVote?'disabled':''}
+                      data-act='{"t":"vote","target":"${id}"}'>${esc(nameOf(id))}${mine?' ✓':''}</button>`;
+          }).join('')}
+        </div>
+        <div class="row" style="margin-top:16px;justify-content:center">
+          ${view.myVote ? `<span class="dim">已投给 ${esc(nameOf(view.myVote))}，等其他人</span>` : ''}
+          <button class="btn ghost" data-act='{"t":"tally"}'>公布结果</button>
+        </div>`;
+    }
+
+    // result
+    const spyNames = (view.spyIds||[]).map(nameOf).join('、');
+    return `
+      <div class="banner ${view.winner==='civilian'?'ok':'warn'}" style="margin-bottom:14px">
+        ${view.winner==='civilian' ? '平民赢了' : view.winner==='spy' ? '卧底赢了' : '流局'}
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="muted" style="font-size:13px">卧底是</div>
+        <div style="font-size:20px;font-weight:700;margin-top:4px">${esc(spyNames)}</div>
+        <div class="note" style="margin-top:10px">
+          平民词「${esc(view.pair?view.pair.civilian:'')}」 · 卧底词「${esc(view.pair?view.pair.spy:'')}」
+        </div>
+        ${view.eliminated.length ? `<div class="note">被淘汰：${view.eliminated.map(nameOf).map(esc).join('、')}</div>` : ''}
+      </div>
+      <div class="row" style="justify-content:center">
+        <button class="btn primary" data-act='{"t":"restart"}'>再来一局</button>
+      </div>`;
+  },
+
+  /* 卧底只有一处会真的卡住：发词阶段所有人点完「看了」才往下走。描述阶段
+     其实堵不死（任何人随时能按「开始投票」），但轮到的人不在时替他翻一页
+     更省事，也省得房主自己去猜该不该开票。 */
+  skip(state, id){
+    if (state.phase === 'reveal' && !state.seen[id]){
+      return this.reduce(state, { t:'seen', by: id });
+    }
+    if (state.phase === 'describe' && state.order[state.turnIdx] === id){
+      return this.reduce(state, { t:'next', by: id });
+    }
+    return null;
+  },
+};
+
+/* ============================ 抽卡 ============================
+   抽签、抽卡、抽人 —— 一个带权重的池子。权重让「谢谢参与」比
+   「大奖」常见，这才是抽卡该有的手感。 */
+const GACHA_POOL_DEFAULT = [
+  { name:'谢谢参与', weight:40 },
+  { name:'再来一次', weight:20 },
+  { name:'免一杯',   weight:18 },
+  { name:'点首歌',   weight:12 },
+  { name:'指定一人喝', weight:8 },
+  { name:'今天你请客', weight:2 },
+];
+
+const gachaPlugin = {
+  id:'gacha', name:'抽卡', icon:'🎴',
+  rhythm: RHYTHM.TOOL, minPlayers:1, maxPlayers:-1,
+  createInitialState({ seed, preset }){
+    const pool = (preset && preset.pool) || GACHA_POOL_DEFAULT;
+    return { gameId:'gacha', seed, pool, poolName: (preset && preset.name) || '默认卡池',
+             last:null, history:[] };
+  },
+  canApply: () => true,
+  reduce(state, action){
+    if (action.t === 'drawCard' && state.pool.length){
+      const d = drawWeighted(state.seed, state.pool);
+      const card = state.pool[d.value];
+      return { ...state, seed:d.seed, last:{ by:action.by, name:card.name },
+               history: state.history.concat([card.name]).slice(-30) };
+    }
+    if (action.t === 'setPool'){
+      const pool = [];
+      for (const line of lines(action.text, 50)){
+        // 「名字 空格 权重」，权重不写就当 1
+        const m = line.match(/^(.*?)[\s*]+(\d+)$/);
+        pool.push(m ? { name:m[1].trim(), weight:Math.max(1, +m[2]) } : { name:line, weight:1 });
+      }
+      if (pool.length < 2) return state;
+      return { ...state, pool, poolName:'自定义', last:null };
+    }
+    return state;
+  },
+  summarize: (s) => s.history.length ? `抽了 ${s.history.length} 张` : '还没抽',
+  presets: [
+    { name:'饭桌罚则', note:'谁抽到谁办事', data:{ name:'饭桌罚则', pool:[
+      { name:'唱一句歌', weight:20 }, { name:'学一声动物叫', weight:20 },
+      { name:'讲个笑话', weight:18 }, { name:'自罚一杯', weight:18 },
+      { name:'指定一人替你', weight:12 }, { name:'全场免罚一次', weight:2 },
+    ] } },
+    { name:'谁去干这件事', note:'抽到的人去', data:{ name:'谁去干这件事', pool:[
+      { name:'我去', weight:35 }, { name:'你去', weight:35 },
+      { name:'他去', weight:25 }, { name:'猜拳决定', weight:5 },
+    ] } },
+  ],
+  presetHint: '每行一项，可以写「名字*权重」，权重越大越容易抽到',
+  readPreset(text){
+    const pool = [];
+    for (const line of lines(text, 50)){
+      const m = line.match(/^(.*?)[\s*]+(\d+)$/);
+      pool.push(m ? { name:m[1].trim(), weight:Math.max(1, +m[2]) } : { name:line, weight:1 });
+    }
+    return pool.length >= 2 ? { pool } : null;
+  },
+  presetToText(data){
+    return (data && data.pool || [])
+      .map(x => (x.weight || 1) === 1 ? x.name : `${x.name}*${x.weight}`).join('\n');
+  },
+  viewFor: (state) => state,
+  render(view, ctx){
+    const who = view.last ? (ctx.members.find(m=>m.id===view.last.by)||{}).name : null;
+    const total = view.pool.reduce((s,x)=>s+(x.weight||1),0);
+    // 只列前几项：池子长的时候全列出来没法看
+    const odds = view.pool.slice().sort((a,b)=>(b.weight||1)-(a.weight||1)).slice(0,6)
+      .map(x => `${esc(x.name)} ${((x.weight||1)/total*100).toFixed(0)}%`).join(' · ');
+
+    return `
+      <div class="big" style="font-size:30px">${view.last ? esc(view.last.name) : '抽一张'}</div>
+      <div class="muted" style="text-align:center;margin:-8px 0 18px">
+        ${view.last ? `${esc(who||'?')} 抽到了这个` : `${esc(view.poolName)} · 共 ${view.pool.length} 张`}
+      </div>
+      <div class="row" style="justify-content:center">
+        <button class="btn primary" data-act='{"t":"drawCard"}'>抽</button>
+        <button class="btn ghost" data-act='{"t":"editPool"}'>改卡池</button>
+      </div>
+      <div class="note" style="margin-top:14px">概率：${odds}</div>
+      ${view.history.length>1 ? `<div class="note" style="margin-top:8px">抽过：${
+        view.history.slice(0,-1).reverse().slice(0,10).map(esc).join(' · ')}</div>` : ''}
+    `;
+  },
+};
+
+/* ============================ 记分牌 ============================
+   这款游戏故意**一点状态都没有** —— 分数是房间的，不是游戏的。
+   它存在的意义就是把房间那份记分牌放大到整屏，给一桌人看。
+   插件里一行分数都没有存，这条规则是「记分牌属于房间」最直接的证明。 */
+const scoreboardPlugin = {
+  id:'scoreboard', name:'记分牌', icon:'📋',
+  rhythm: RHYTHM.TOOL, minPlayers:1, maxPlayers:-1,
+  createInitialState: ({ seed }) => ({ gameId:'scoreboard', seed }),
+  canApply: () => true,
+  reduce: (state) => state,          // 它不改状态，改的是房间
+  summarize: () => '记分牌',
+  viewFor: (state) => state,
+  render(view, ctx){
+    // scores 是可选的：单机或没进房间时拿不到，缺了就当全是 0，别崩
+    const sc = ctx.scores || {};
+    const rows = ctx.members.slice().sort((a,b) => (sc[b.id]||0) - (sc[a.id]||0));
+    if (!rows.length) return '<div class="note" style="text-align:center;padding:30px 0">房间里还没有人</div>';
+
+    const top = Math.max(0, ...rows.map(m => sc[m.id] || 0));
+    return `
+      <div class="board">
+        ${rows.map((m, i) => {
+          const v = sc[m.id] || 0;
+          return `
+          <div class="srow ${i===0 && top>0 ? 'lead' : ''}">
+            <span class="rk">${i===0 && top>0 ? '👑' : i+1}</span>
+            <span class="nm">${esc(m.name)}</span>
+            <button class="btn sm ghost" data-act='{"t":"scoreAdd","member":"${m.id}","delta":-1}'>−</button>
+            <span class="val">${v}</span>
+            <button class="btn sm ghost" data-act='{"t":"scoreAdd","member":"${m.id}","delta":1}'>+</button>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="row" style="justify-content:center;margin-top:14px">
+        <button class="btn ghost sm" data-act='{"t":"resetScores"}'>全部清零</button>
+      </div>
+      <div class="note" style="text-align:center;margin-top:10px">
+        分数挂在房间上，换任何游戏都不会清零。
+      </div>`;
+  },
+};
+
+/* ============================ 五子棋 ============================
+   第一款真正需要「回合 + 胜负判定」的游戏。
+   棋类共同的难点不是棋盘怎么画，是**坐在旁边看的人怎么办** ——
+   聚会场景里一屋子人，两个人下棋，剩下的不该被关在门外。
+   所以 maxPlayers 是 -1：谁上场由房主点，其余人同看一块棋盘。 */
+const GOMOKU_DIRS = [[1,0],[0,1],[1,1],[1,-1]];
+
+/** 从刚落下的这一子往四个方向数，数出五连就是赢。只看这一子，不用全盘扫。 */
+function gomokuWinAt(board, size, x, y, p){
+  for (const [dx, dy] of GOMOKU_DIRS){
+    const line = [[x,y]];
+    for (const sign of [1, -1]){
+      let nx = x + dx*sign, ny = y + dy*sign;
+      while (nx >= 0 && ny >= 0 && nx < size && ny < size && board[ny*size+nx] === p){
+        line.push([nx, ny]);
+        nx += dx*sign; ny += dy*sign;
+      }
+    }
+    if (line.length >= 5) return line;
+  }
+  return null;
+}
+
+/* ---------- 棋类共用的「谁上场」 ----------
+   一屋子人，两个人下棋。所以 maxPlayers 一律是 -1：谁上场由房主点，
+   其余人同看一块棋盘，而不是被关在门外。下起来就不许再换人。 */
+function seatCanApply(state, action){
+  if (action.t === 'seat')
+    return state.players.length < 2 && !state.players.includes(action.id) && !state.moves.length;
+  if (action.t === 'unseat') return !state.moves.length;
+  return undefined;                 // 不是我管的动作
+}
+function seatReduce(state, action){
+  if (action.t === 'seat')   return { ...state, players: state.players.concat([action.id]) };
+  if (action.t === 'unseat') return { ...state, players: [], turn: state.turn0 };
+  return null;
+}
+/** 棋类共用的选人界面 */
+function seatingHTML(view, ctx, { title, marks }){
+  const seated = new Set(view.players);
+  return `
+    <div class="banner" style="margin-bottom:14px">
+      ${esc(title || '选两个人来下')}
+      <div class="dim" style="margin-top:4px">
+        已经点了 ${view.players.length}/2 —— 其余人可以一起看这块棋盘
+      </div>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
+      ${ctx.members.map(m => {
+        const on = seated.has(m.id);
+        const seat = view.players.indexOf(m.id);
+        return `<button class="btn ${on ? 'primary' : ''}" ${on ? 'disabled' : ''}
+                  data-act='{"t":"seat","id":"${m.id}"}'>
+                  ${esc(m.name)}${on ? ' ' + marks[seat] : ''}
+                </button>`;
+      }).join('')}
+    </div>
+    ${view.players.length ? `<div class="row" style="justify-content:center;margin-top:14px">
+      <button class="btn ghost sm" data-act='{"t":"unseat"}'>重选</button>
+    </div>` : ''}`;
+}
+
+const gomokuPlugin = {
+  id:'gomoku', name:'五子棋', icon:'⚫',
+  rhythm: RHYTHM.DUO, minPlayers:2, maxPlayers:-1,
+  createInitialState({ seed, preset }){
+    const size = (preset && preset.size) || 15;
+    return {
+      gameId:'gomoku', seed, size,
+      board: new Array(size*size).fill(0),   // 0 空 / 1 黑 / 2 白
+      players: [],                            // 谁上场，房主点出来的
+      turn: 1, turn0: 1,                      // 该黑棋还是白棋
+      moves: [],
+      winner: null,                           // null | 1 | 2 | 'draw'
+      winLine: null,
+      last: null,
+    };
+  },
+  canApply(state, actorId, action){
+    if (action.t === 'restart') return true;
+    const seat = seatCanApply(state, action);
+    if (seat !== undefined) return seat;
+    if (action.t !== 'place') return false;
+    if (state.winner !== null) return false;
+    if (state.players.length < 2) return false;
+    if (state.players[state.turn - 1] !== actorId) return false;
+    const { x, y } = action;
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return false;
+    if (x < 0 || y < 0 || x >= state.size || y >= state.size) return false;
+    return state.board[y*state.size + x] === 0;
+  },
+  reduce(state, action){
+    const seated = seatReduce(state, action);
+    if (seated) return seated;
+
+    switch (action.t){
+      case 'place': {
+        const { x, y } = action;
+        const p = state.turn;
+        const board = state.board.slice();
+        board[y*state.size + x] = p;
+
+        const line = gomokuWinAt(board, state.size, x, y, p);
+        const full = board.every(v => v !== 0);
+        const winner = line ? p : (full ? 'draw' : null);
+
+        return {
+          ...state, board,
+          moves: state.moves.concat([{ x, y, p }]),
+          last: { x, y },
+          winner,
+          winLine: line ? line.map(([wx,wy]) => wy*state.size + wx) : null,
+          // 赢了就停在赢家那一手，不再轮换
+          turn: winner === null ? (p === 1 ? 2 : 1) : p,
+        };
+      }
+      case 'restart':
+        // 重开一局但人不动 —— 换的是棋局，不是座位
+        return { ...this.createInitialState({ seed: nextSeed(state.seed), preset: { size: state.size } }),
+                 players: state.players };
+      default: return state;
+    }
+  },
+  summarize: (s) => s.winner === 'draw' ? '和棋'
+    : s.winner ? (s.winner === 1 ? '黑棋赢' : '白棋赢')
+    : `下了 ${s.moves.length} 手`,
+
+  /* 轮到的人不见了，这一局就走不下去了。棋类没法「替他走一手」—— 替他落子
+     等于凭空捏造一步棋。所以这里的语义是判退：弃权一方算负。 */
+  skip(state, id){
+    if (state.winner !== null) return null;
+    const seat = state.players.indexOf(id);
+    if (seat < 0 || state.players[1 - seat] === undefined) return null;
+    return { ...state, winner: seat === 0 ? 2 : 1 };
+  },
+  presets: [
+    { name:'标准 15 路', note:'常规棋盘', data:{ size:15 } },
+    { name:'快棋 13 路', note:'小一点，手机上好点', data:{ size:13 } },
+    { name:'极速 9 路', note:'几步就见分晓', data:{ size:9 } },
+  ],
+  viewFor: (state) => state,      // 棋类是明棋，没有隐藏信息
+  render(view, ctx){
+    const n = view.size;
+    const nameOf = id => (ctx.members.find(m=>m.id===id)||{}).name || '?';
+
+    if (view.players.length < 2){
+      return seatingHTML(view, ctx, { title:'选两个人下棋', marks:['⚫','⚪'] });
+    }
+
+    const isMyTurn = view.winner === null && view.players[view.turn - 1] === ctx.me.id;
+    const win = new Set(view.winLine || []);
+    const mySeat = view.players.indexOf(ctx.me.id);   // -1 = 旁观
+
+    const cells = view.board.map((v, i) => {
+      const x = i % n, y = (i - x) / n;
+      const isLast = view.last && view.last.x === x && view.last.y === y;
+      const cls = ['gcell'];
+      if (win.has(i)) cls.push('win');
+      if (isLast && !win.has(i)) cls.push('last');
+      if (!v && isMyTurn) cls.push('play');
+      // 空格才带动作；已经有子的格子点了也没用，别发无谓的动作
+      const act = (!v && isMyTurn) ? ` data-act='{"t":"place","x":${x},"y":${y}}'` : '';
+      return `<div class="${cls.join(' ')}"${act}>${v === 1 ? '⚫' : v === 2 ? '⚪' : ''}</div>`;
+    }).join('');
+
+    const status = view.winner === 'draw' ? '和棋'
+      : view.winner ? `${view.winner === 1 ? '黑棋' : '白棋'}赢了`
+      : isMyTurn ? '轮到你了'
+      : `轮到 ${esc(nameOf(view.players[view.turn - 1]))}`;
+
+    return `
+      <div class="banner ${view.winner || isMyTurn ? 'ok' : ''}" style="margin-bottom:12px">
+        ${status}
+        <div class="dim" style="margin-top:4px">
+          ⚫ ${esc(nameOf(view.players[0]))} · ⚪ ${esc(nameOf(view.players[1]))}
+          ${mySeat < 0 ? ' · 你在旁观' : ''}
+        </div>
+      </div>
+      <div class="gboard" style="grid-template-columns:repeat(${n},1fr)">${cells}</div>
+      <div class="row" style="justify-content:center;margin-top:14px">
+        ${view.winner !== null
+          ? `<button class="btn primary" data-act='{"t":"restart"}'>再来一局</button>`
+          : `<button class="btn ghost sm" data-act='{"t":"unseat"}'>换人</button>`}
+      </div>`;
+  },
+};
+
+/* ============================ 国际象棋 ============================
+   棋盘用 64 格一维数组，下标 0 = a8，63 = h1（也就是 r=0 是第 8 横排）。
+   棋子是 { c:'w'|'b', t:'p'|'n'|'b'|'r'|'q'|'k' }。
+   空格是 null，出界是 undefined —— 这两个分得清，滑行棋子才不会绕着边跑。
+
+   刻意没做的：50 回合和棋、三次重复局面、升变时选子（一律升后）。
+   聚会下棋用不上，写全了只会让规则代码更难验。 */
+const CHESS_ORTH = [[1,0],[-1,0],[0,1],[0,-1]];
+const CHESS_DIAG = [[1,1],[1,-1],[-1,1],[-1,-1]];
+const CHESS_KNIGHT = [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]];
+const CHESS_KING = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+const CHESS_FILES = 'abcdefgh';
+const CHESS_GLYPH = {
+  w:{ k:'♔', q:'♕', r:'♖', b:'♗', n:'♘', p:'♙' },
+  b:{ k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' },
+};
+
+function chessParse(str){
+  const b = new Array(64).fill(null);
+  let i = 0;
+  for (const ch of str){
+    if (ch === '/') continue;
+    if (ch >= '1' && ch <= '8'){ i += +ch; continue; }
+    b[i++] = { c: ch === ch.toUpperCase() ? 'w' : 'b', t: ch.toLowerCase() };
+  }
+  return b;
+}
+function chessF(i){ return i % 8; }
+function chessR(i){ return (i / 8) | 0; }
+/** 给人看的格子名，比如 e4 */
+function chessName(i){ return CHESS_FILES[chessF(i)] + (8 - chessR(i)); }
+function chessAt(b, f, r){
+  if (f < 0 || r < 0 || f > 7 || r > 7) return undefined;   // 出界
+  return b[r * 8 + f];
+}
+const chessOther = c => (c === 'w' ? 'b' : 'w');
+
+/** 这个格子有没有被 by 这一方攻击 —— 将军、易位、应将全指望它 */
+function chessAttacked(b, f, r, by){
+  // 兵：白兵往上走（r 减小），所以能攻击到 (f,r) 的白兵在 r+1 那一行
+  const pd = by === 'w' ? 1 : -1;
+  for (const df of [-1, 1]){
+    const q = chessAt(b, f + df, r + pd);
+    if (q && q.c === by && q.t === 'p') return true;
+  }
+  for (const [df, dr] of CHESS_KNIGHT){
+    const q = chessAt(b, f + df, r + dr);
+    if (q && q.c === by && q.t === 'n') return true;
+  }
+  for (const [df, dr] of CHESS_KING){
+    const q = chessAt(b, f + df, r + dr);
+    if (q && q.c === by && q.t === 'k') return true;
+  }
+  for (const [dirs, types] of [[CHESS_DIAG, 'bq'], [CHESS_ORTH, 'rq']]){
+    for (const [df, dr] of dirs){
+      let tf = f + df, tr = r + dr;
+      for (;;){
+        const q = chessAt(b, tf, tr);
+        if (q === undefined) break;              // 出界
+        if (q){ if (q.c === by && types.includes(q.t)) return true; break; }
+        tf += df; tr += dr;
+      }
+    }
+  }
+  return false;
+}
+
+function chessKingAt(b, color){
+  for (let i = 0; i < 64; i++) if (b[i] && b[i].c === color && b[i].t === 'k') return i;
+  return -1;
+}
+function chessInCheck(b, color){
+  const k = chessKingAt(b, color);
+  if (k < 0) return false;
+  return chessAttacked(b, chessF(k), chessR(k), chessOther(color));
+}
+
+/** 这个子能走到哪些格子（不检查走完之后自己是不是被将军） */
+function chessMoves(state, from){
+  const b = state.board, p = b[from];
+  if (!p) return [];
+  const f = chessF(from), r = chessR(from);
+  const out = [];
+  const push = (tf, tr) => {
+    if (tf < 0 || tr < 0 || tf > 7 || tr > 7) return false;
+    const j = tr * 8 + tf, q = b[j];
+    if (q && q.c === p.c) return false;
+    out.push(j);
+    return !q;                                   // 空格才滑得下去
+  };
+
+  if (p.t === 'p'){
+    const dir = p.c === 'w' ? -1 : 1;
+    const startR = p.c === 'w' ? 6 : 1;
+    const nr = r + dir;
+    if (nr >= 0 && nr <= 7){
+      if (!b[nr * 8 + f]){
+        out.push(nr * 8 + f);
+        const nr2 = r + dir * 2;
+        if (r === startR && nr2 >= 0 && nr2 <= 7 && !b[nr2 * 8 + f]) out.push(nr2 * 8 + f);
+      }
+      for (const df of [-1, 1]){
+        const tf = f + df;
+        if (tf < 0 || tf > 7) continue;
+        const j = nr * 8 + tf, q = b[j];
+        if (q && q.c !== p.c) out.push(j);
+        else if (!q && state.ep === j) out.push(j);   // 吃过路兵
+      }
+    }
+  } else if (p.t === 'n' || p.t === 'k'){
+    for (const [df, dr] of (p.t === 'n' ? CHESS_KNIGHT : CHESS_KING)) push(f + df, r + dr);
+
+    if (p.t === 'k'){
+      const home = p.c === 'w' ? 7 : 0;
+      const rights = state.castling || {};
+      const opp = chessOther(p.c);
+      // 王没动过、车还在、中间是空的、而且王不能穿过被攻击的格子
+      if (r === home && f === 4){
+        const kOk = p.c === 'w' ? rights.wk : rights.bk;
+        const qOk = p.c === 'w' ? rights.wq : rights.bq;
+        if (kOk && !b[home*8+5] && !b[home*8+6]
+            && !chessAttacked(b, 4, home, opp) && !chessAttacked(b, 5, home, opp)
+            && !chessAttacked(b, 6, home, opp)) out.push(home*8+6);
+        if (qOk && !b[home*8+1] && !b[home*8+2] && !b[home*8+3]
+            && !chessAttacked(b, 4, home, opp) && !chessAttacked(b, 3, home, opp)
+            && !chessAttacked(b, 2, home, opp)) out.push(home*8+2);
+      }
+    }
+  } else {
+    const dirs = p.t === 'b' ? CHESS_DIAG : p.t === 'r' ? CHESS_ORTH
+               : CHESS_DIAG.concat(CHESS_ORTH);
+    for (const [df, dr] of dirs){
+      let tf = f + df, tr = r + dr;
+      while (push(tf, tr)){ tf += df; tr += dr; }
+    }
+  }
+  return out;
+}
+
+/** 走一步，不判断合不合法（合法性由 chessLegal 筛） */
+function chessMake(state, from, to){
+  const b = state.board.slice();
+  const p = b[from];
+  const f = chessF(from), r = chessR(from);
+  const tf = chessF(to), tr = chessR(to);
+
+  const isEp = p.t === 'p' && state.ep === to && !b[to];
+  const isCastle = p.t === 'k' && Math.abs(tf - f) === 2;
+
+  b[to] = p;
+  b[from] = null;
+  if (isEp) b[r * 8 + tf] = null;                       // 被吃掉的兵在起点那一行
+  if (isCastle){
+    const rookFrom = tf > f ? r * 8 + 7 : r * 8 + 0;
+    const rookTo   = tf > f ? r * 8 + 5 : r * 8 + 3;
+    b[rookTo] = b[rookFrom];
+    b[rookFrom] = null;
+  }
+  // 到底线一律升后
+  if (p.t === 'p' && (tr === 0 || tr === 7)) b[to] = { c: p.c, t: 'q' };
+
+  const castling = { ...(state.castling || {}) };
+  if (p.t === 'k'){
+    if (p.c === 'w'){ castling.wk = castling.wq = false; }
+    else            { castling.bk = castling.bq = false; }
+  }
+  if (from === 63) castling.wk = false;                 // 车挪了
+  if (from === 56) castling.wq = false;
+  if (from === 7)  castling.bk = false;
+  if (from === 0)  castling.bq = false;
+  if (to === 63) castling.wk = false;                   // 车被吃了
+  if (to === 56) castling.wq = false;
+  if (to === 7)  castling.bk = false;
+  if (to === 0)  castling.bq = false;
+
+  return {
+    ...state, board: b, castling,
+    // 兵一次走两格时，中间那格就是「过路兵」的目标格
+    ep: (p.t === 'p' && Math.abs(tr - r) === 2) ? ((r + tr) / 2) * 8 + f : null,
+    turn: chessOther(p.c),
+    last: { from, to },
+  };
+}
+
+/** 合法着法 = 能走 + 走完自己不被将军 */
+function chessLegal(state, from){
+  const p = state.board[from];
+  if (!p || p.c !== state.turn) return [];
+  return chessMoves(state, from).filter(to => !chessInCheck(chessMake(state, from, to).board, p.c));
+}
+/** 当前这一方所有合法着法。一个都没有 = 将死或闷和 */
+function chessAllLegal(state){
+  const map = {};
+  let n = 0;
+  for (let i = 0; i < 64; i++){
+    if (!state.board[i] || state.board[i].c !== state.turn) continue;
+    const to = chessLegal(state, i);
+    if (to.length){ map[i] = to; n += to.length; }
+  }
+  return map;
+}
+/** 走完之后判一下：将军 / 将死 / 闷和 */
+function chessAdvance(state, from, to){
+  const next = chessMake(state, from, to);   // 这里才记谱：chessLegal 会反复试走，不该往历史里塞
+  const opp = next.turn;
+  const check = chessInCheck(next.board, opp);
+  const anyLegal = Object.keys(chessAllLegal(next)).length > 0;
+  return {
+    ...next,
+    moves: state.moves.concat([{ from, to }]),
+    check,
+    winner: !anyLegal ? (check ? chessOther(opp) : 'draw') : null,
+  };
+}
+
+const chessPlugin = {
+  id:'chess', name:'国际象棋', icon:'♞',
+  rhythm: RHYTHM.SERIOUS, minPlayers:2, maxPlayers:-1,
+  createInitialState({ seed }){
+    return {
+      gameId:'chess', seed, turn0:'w', turn:'w',
+      board: chessParse('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR'),
+      players: [],
+      castling: { wk:true, wq:true, bk:true, bq:true },
+      ep: null,
+      last: null,
+      moves: [],
+      check: false,
+      winner: null,
+    };
+  },
+  canApply(state, actorId, action){
+    if (action.t === 'restart') return true;
+    const seat = seatCanApply(state, action);
+    if (seat !== undefined) return seat;
+    if (action.t !== 'move') return false;
+    if (state.winner !== null) return false;
+    if (state.players.length < 2) return false;
+    if (state.players[state.turn === 'w' ? 0 : 1] !== actorId) return false;
+    return chessLegal(state, action.from).includes(action.to);
+  },
+  reduce(state, action){
+    const seated = seatReduce(state, action);
+    if (seated) return seated;
+
+    if (action.t === 'move'){
+      return chessAdvance(state, action.from, action.to);
+    }
+    if (action.t === 'restart'){
+      return { ...this.createInitialState({ seed: nextSeed(state.seed) }),
+               players: state.players };
+    }
+    return state;
+  },
+  summarize(s){
+    if (s.winner === 'draw') return '和棋';
+    if (s.winner) return s.winner === 'w' ? '白棋赢' : '黑棋赢';
+    return `走了 ${s.moves.length} 步`;
+  },
+  viewFor: (state) => state,          // 明棋，没有隐藏信息 —— 选中的格子走界面层
+
+  /* 同五子棋：棋替不了，只能判退。players[0] 执白 */
+  skip(state, id){
+    if (state.winner !== null) return null;
+    const seat = state.players.indexOf(id);
+    if (seat < 0 || state.players[1 - seat] === undefined) return null;
+    return { ...state, winner: seat === 0 ? 'b' : 'w' };
+  },
+  render(view, ctx){
+    if (view.players.length < 2){
+      return seatingHTML(view, ctx, { title:'选两个人对局', marks:['♔','♚'] });
+    }
+
+    const nameOf = id => (ctx.members.find(m => m.id === id) || {}).name || '?';
+    const myColor = view.players[0] === ctx.me.id ? 'w' : view.players[1] === ctx.me.id ? 'b' : null;
+    const myTurn = view.winner === null && myColor === view.turn;
+    const sel = (ctx.ui && ctx.ui.chessSel);
+    const targets = new Set((sel != null && myTurn) ? chessLegal(view, sel) : []);
+    const movable = myTurn ? new Set(Object.keys(chessAllLegal(view)).map(Number)) : new Set();
+
+    const cells = view.board.map((p, i) => {
+      const f = chessF(i), r = chessR(i);
+      const light = (f + r) % 2 === 0;
+      const cls = ['gcell', light ? 'lt' : 'dk'];
+      if (i === sel) cls.push('sel');
+      else if (targets.has(i)) cls.push('tgt');
+      else if (movable.has(i)) cls.push('can');
+      if (view.last && view.last.to === i) cls.push('last');
+
+      // 点自己的子 = 选中，再点一次 = 取消；点绿框 = 走；其余不发动作
+      let act = null;
+      if (i === sel)                      act = { t:'sel', k:'chessSel', v: null };
+      else if (myTurn && targets.has(i))  act = { t:'move', from: sel, to: i };
+      else if (myTurn && movable.has(i))  act = { t:'sel', k:'chessSel', v: i };
+
+      return `<div class="${cls.join(' ')}"${act ? ` data-act='${JSON.stringify(act)}'` : ''}
+               >${p ? CHESS_GLYPH[p.c][p.t] : ''}</div>`;
+    }).join('');
+
+    const status = view.winner === 'draw' ? '和棋'
+      : view.winner ? `${view.winner === 'w' ? '白棋' : '黑棋'}赢了`
+      : view.check ? `${view.turn === 'w' ? '白棋' : '黑棋'}被将军`
+      : myTurn ? '轮到你了'
+      : myColor ? `等 ${esc(nameOf(view.players[view.turn === 'w' ? 0 : 1]))} 走`
+      : '你在旁观';
+
+    return `
+      <div class="banner ${view.winner || myTurn ? 'ok' : view.check ? 'warn' : ''}"
+           style="margin-bottom:12px">
+        ${status}
+        <div class="dim" style="margin-top:4px">
+          ♔ ${esc(nameOf(view.players[0]))} · ♚ ${esc(nameOf(view.players[1]))}
+          ${myColor ? ` · 你执${myColor === 'w' ? '白' : '黑'}` : ' · 你在旁观'}
+        </div>
+      </div>
+      <div class="gboard chess" style="grid-template-columns:repeat(8,1fr)">${cells}</div>
+      <div class="row" style="justify-content:center;margin-top:14px">
+        ${view.winner !== null
+          ? `<button class="btn primary" data-act='{"t":"restart"}'>再来一局</button>`
+          : `<button class="btn ghost sm" data-act='{"t":"unseat"}'>换人</button>`}
+      </div>
+      ${sel != null ? `<div class="note" style="text-align:center;margin-top:10px">
+        选中了 ${chessName(sel)}${targets.size ? '，点绿框走过去' : '，这个子没地方可走'}
+      </div>` : ''}`;
+  },
+};
+
+/* ============================ 象棋 ============================
+   棋盘 9 列 × 10 行，下标 0 = 左上角（黑方底线）。f = i%9 是列，r = (i/9)|0 是行。
+   r=0..4 是黑方那半边，r=5..9 是红方那半边，河在 r=4 和 r=5 中间。
+   棋子是 { c:'w'|'b', t:'k'|'a'|'e'|'n'|'r'|'c'|'p' }，w 是红、b 是黑。
+   和棋那边一样：空格是 null、出界是 undefined。
+
+   有一条容易记反，写在最前面：**象棋里无子可动 = 输（闷宫），不是和棋。**
+   国际象棋那边无子可动是和棋。两个规则刚好相反，别写串了。
+
+   刻意没做的：长将/长捉判负、自然限着。聚会下棋用不上，写全了只会更难验。 */
+const XQ_COLS = 9, XQ_ROWS = 10;
+const XQ_ORTH = [[1,0],[-1,0],[0,1],[0,-1]];
+const XQ_DIAG = [[1,1],[1,-1],[-1,1],[-1,-1]];
+const XQ_HORSE = [[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]];
+/* 棋子代号沿用象棋 FEN 的惯例（B = 象，不是国际象棋的象）：K A B N R C P */
+const XQ_GLYPH = {
+  w:{ k:'帥', a:'仕', b:'相', n:'傌', r:'俥', c:'炮', p:'兵' },
+  b:{ k:'將', a:'士', b:'象', n:'馬', r:'車', c:'砲', p:'卒' },
+};
+const xqOther = c => (c === 'w' ? 'b' : 'w');
+
+function xqParse(str){
+  const b = new Array(XQ_COLS * XQ_ROWS).fill(null);
+  let i = 0;
+  for (const ch of str){
+    if (ch === '/') continue;
+    if (ch >= '1' && ch <= '9'){ i += +ch; continue; }
+    b[i++] = { c: ch === ch.toUpperCase() ? 'w' : 'b', t: ch.toLowerCase() };
+  }
+  return b;
+}
+function xqF(i){ return i % XQ_COLS; }
+function xqR(i){ return (i / XQ_COLS) | 0; }
+function xqAt(b, f, r){
+  if (f < 0 || r < 0 || f >= XQ_COLS || r >= XQ_ROWS) return undefined;
+  return b[r * XQ_COLS + f];
+}
+/** 给人看的格子名，比如 a0 是黑方左角。象棋记谱法另有一套，这里只要能对上号就行 */
+function xqName(i){ return 'abcdefghi'[xqF(i)] + xqR(i); }
+
+/** 九宫格：红方在下面（r 7..9），黑方在上面（r 0..2），都只占中间三列 */
+const xqInPalace = (c, f, r) => f >= 3 && f <= 5 && (c === 'w' ? r >= 7 : r <= 2);
+/** 是不是还在自己这半边 —— 象不过河、兵过河才能横着走，都靠它 */
+const xqOwnSide = (c, r) => (c === 'w' ? r >= 5 : r <= 4);
+
+function xqGen(b, color){
+  for (let i = 0; i < XQ_COLS * XQ_ROWS; i++){
+    if (b[i] && b[i].c === color && b[i].t === 'k') return i;
+  }
+  return -1;
+}
+/** 将帅照面：同一条竖线上、中间一个子都没有。这本身就是非法局面 */
+function xqFacing(b){
+  const a = xqGen(b, 'w'), c = xqGen(b, 'b');
+  if (a < 0 || c < 0 || xqF(a) !== xqF(c)) return false;
+  const f = xqF(a);
+  const lo = Math.min(xqR(a), xqR(c)), hi = Math.max(xqR(a), xqR(c));
+  for (let r = lo + 1; r < hi; r++) if (b[r * XQ_COLS + f]) return false;
+  return true;
+}
+
+/** 这一格有没有被 by 这方攻击。士和象够不着对方的老将（士出不了九宫、象过不了河），所以不查 */
+function xqAttacked(b, f, r, by){
+  for (const [df, dr] of XQ_ORTH){                    // 车
+    let tf = f + df, tr = r + dr;
+    for (;;){
+      const q = xqAt(b, tf, tr);
+      if (q === undefined) break;
+      if (q){ if (q.c === by && q.t === 'r') return true; break; }
+      tf += df; tr += dr;
+    }
+  }
+  for (const [df, dr] of XQ_ORTH){                    // 炮：隔着正好一个子才打得到
+    let tf = f + df, tr = r + dr, screen = false;
+    for (;;){
+      const q = xqAt(b, tf, tr);
+      if (q === undefined) break;
+      if (q){
+        if (!screen) screen = true;                   // 这个是炮台
+        else { if (q.c === by && q.t === 'c') return true; break; }
+      }
+      tf += df; tr += dr;
+    }
+  }
+  for (const [df, dr] of XQ_HORSE){                   // 马：倒推马在哪，再看它的腿蹩没蹩
+    const hf = f + df, hr = r + dr;
+    const q = xqAt(b, hf, hr);
+    if (!q || q.c !== by || q.t !== 'n') continue;
+    const lf = hf + (Math.abs(df) === 2 ? (df > 0 ? -1 : 1) : 0);   // 腿紧挨着马
+    const lr = hr + (Math.abs(dr) === 2 ? (dr > 0 ? -1 : 1) : 0);
+    if (!xqAt(b, lf, lr)) return true;
+  }
+  const back = by === 'w' ? 1 : -1;                   // 红兵往上走，所以在 r+1 那一行攻过来
+  {
+    const q = xqAt(b, f, r + back);
+    if (q && q.c === by && q.t === 'p') return true;
+  }
+  for (const df of [-1, 1]){                          // 过河的兵才能横着吃
+    const q = xqAt(b, f + df, r);
+    if (q && q.c === by && q.t === 'p' && !xqOwnSide(by, r)) return true;
+  }
+  return false;
+}
+
+function xqInCheck(b, color){
+  const g = xqGen(b, color);
+  if (g < 0) return false;
+  return xqAttacked(b, xqF(g), xqR(g), xqOther(color));
+}
+
+/** 这个子能走到哪些格子（不检查走完之后自己是不是被将军、会不会照面） */
+function xqMoves(state, from){
+  const b = state.board, p = b[from];
+  if (!p) return [];
+  const f = xqF(from), r = xqR(from), out = [];
+  const push = (tf, tr) => {
+    const q = xqAt(b, tf, tr);
+    if (q === undefined) return;
+    if (q && q.c === p.c) return;
+    out.push(tr * XQ_COLS + tf);
+  };
+
+  if (p.t === 'k'){
+    for (const [df, dr] of XQ_ORTH) if (xqInPalace(p.c, f + df, r + dr)) push(f + df, r + dr);
+  } else if (p.t === 'a'){
+    for (const [df, dr] of XQ_DIAG) if (xqInPalace(p.c, f + df, r + dr)) push(f + df, r + dr);
+  } else if (p.t === 'b'){                            // 象（象棋 FEN 里就是 B）
+    for (const [df, dr] of XQ_DIAG){
+      if (!xqOwnSide(p.c, r + dr * 2)) continue;      // 象不过河
+      if (xqAt(b, f + df, r + dr)) continue;          // 塞象眼
+      push(f + df * 2, r + dr * 2);
+    }
+  } else if (p.t === 'n'){
+    for (const [df, dr] of XQ_HORSE){
+      // 蹩马腿：腿在紧挨着马的那一格，方向是「长的那一段」
+      const lf = f + (Math.abs(df) === 2 ? (df > 0 ? 1 : -1) : 0);
+      const lr = r + (Math.abs(dr) === 2 ? (dr > 0 ? 1 : -1) : 0);
+      if (xqAt(b, lf, lr)) continue;
+      push(f + df, r + dr);
+    }
+  } else if (p.t === 'r'){
+    for (const [df, dr] of XQ_ORTH){
+      let tf = f + df, tr = r + dr;
+      for (;;){
+        const q = xqAt(b, tf, tr);
+        if (q === undefined) break;
+        if (q){ if (q.c !== p.c) out.push(tr * XQ_COLS + tf); break; }
+        out.push(tr * XQ_COLS + tf);
+        tf += df; tr += dr;
+      }
+    }
+  } else if (p.t === 'c'){
+    for (const [df, dr] of XQ_ORTH){
+      let tf = f + df, tr = r + dr, screen = false;
+      for (;;){
+        const q = xqAt(b, tf, tr);
+        if (q === undefined) break;
+        if (!screen){
+          if (q) screen = true;                       // 撞上炮台，往后只能吃不能走
+          else out.push(tr * XQ_COLS + tf);
+        } else if (q){
+          if (q.c !== p.c) out.push(tr * XQ_COLS + tf);
+          break;                                      // 炮架后面只认第一个子
+        }
+        tf += df; tr += dr;
+      }
+    }
+  } else if (p.t === 'p'){
+    const dir = p.c === 'w' ? -1 : 1;                 // 红兵往上（r 减小）
+    push(f, r + dir);
+    if (!xqOwnSide(p.c, r)){ push(f - 1, r); push(f + 1, r); }
+  }
+  return out;
+}
+
+/** 走一步，不管合不合法（合法性交给 xqLegal 筛） */
+function xqMake(state, from, to){
+  const b = state.board.slice();
+  const p = b[from];
+  b[to] = p;
+  b[from] = null;
+  return { ...state, board: b, turn: xqOther(p.c), last: { from, to } };
+}
+
+/** 合法着法 = 能走 + 走完自己不被将军 + 不走出将帅照面 */
+function xqLegal(state, from){
+  const p = state.board[from];
+  if (!p || p.c !== state.turn) return [];
+  return xqMoves(state, from).filter(to => {
+    const n = xqMake(state, from, to).board;
+    return !xqInCheck(n, p.c) && !xqFacing(n);
+  });
+}
+function xqAllLegal(state){
+  const map = {};
+  for (let i = 0; i < XQ_COLS * XQ_ROWS; i++){
+    if (!state.board[i] || state.board[i].c !== state.turn) continue;
+    const to = xqLegal(state, i);
+    if (to.length) map[i] = to;
+  }
+  return map;
+}
+function xqAdvance(state, from, to){
+  const next = xqMake(state, from, to);               // 这里才记谱：xqLegal 会反复试走
+  const opp = next.turn;
+  const check = xqInCheck(next.board, opp);
+  const anyLegal = Object.keys(xqAllLegal(next)).length > 0;
+  // 和国际象棋相反：无子可动一律算输 —— 被将军是将死，没被将军是闷宫，都是死
+  return {
+    ...next,
+    moves: state.moves.concat([{ from, to }]),
+    check,
+    winner: anyLegal ? null : xqOther(opp),
+  };
+}
+
+const xiangqiPlugin = {
+  id:'xiangqi', name:'象棋', icon:'帥',
+  rhythm: RHYTHM.SERIOUS, minPlayers:2, maxPlayers:-1,
+  createInitialState({ seed }){
+    return {
+      gameId:'xiangqi', seed, turn0:'w', turn:'w',
+      board: xqParse('rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR'),
+      players: [],
+      last: null,
+      moves: [],
+      check: false,
+      winner: null,
+    };
+  },
+  canApply(state, actorId, action){
+    if (action.t === 'restart') return true;
+    const seat = seatCanApply(state, action);
+    if (seat !== undefined) return seat;
+    if (action.t !== 'move') return false;
+    if (state.winner !== null) return false;
+    if (state.players.length < 2) return false;
+    if (state.players[state.turn === 'w' ? 0 : 1] !== actorId) return false;
+    return xqLegal(state, action.from).includes(action.to);
+  },
+  reduce(state, action){
+    const seated = seatReduce(state, action);
+    if (seated) return seated;
+
+    if (action.t === 'move') return xqAdvance(state, action.from, action.to);
+    if (action.t === 'restart'){
+      return { ...this.createInitialState({ seed: nextSeed(state.seed) }),
+               players: state.players };
+    }
+    return state;
+  },
+  summarize(s){
+    if (s.winner) return s.winner === 'w' ? '红方赢' : '黑方赢';
+    return `走了 ${s.moves.length} 步`;
+  },
+  viewFor: (state) => state,          // 明棋，没有隐藏信息 —— 选中的格子属于界面层
+
+  /* 同五子棋：棋替不了，只能判退。players[0] 执红（沿用 'w' 这个记号） */
+  skip(state, id){
+    if (state.winner !== null) return null;
+    const seat = state.players.indexOf(id);
+    if (seat < 0 || state.players[1 - seat] === undefined) return null;
+    return { ...state, winner: seat === 0 ? 'b' : 'w' };
+  },
+  render(view, ctx){
+    if (view.players.length < 2){
+      return seatingHTML(view, ctx, { title:'选两个人对局', marks:['帥','將'] });
+    }
+
+    const nameOf = id => (ctx.members.find(m => m.id === id) || {}).name || '?';
+    const myColor = view.players[0] === ctx.me.id ? 'w' : view.players[1] === ctx.me.id ? 'b' : null;
+    const myTurn = view.winner === null && myColor === view.turn;
+    const sel = (ctx.ui && ctx.ui.xqSel);
+    const targets = new Set((sel != null && myTurn) ? xqLegal(view, sel) : []);
+    const movable = myTurn ? new Set(Object.keys(xqAllLegal(view)).map(Number)) : new Set();
+
+    const cells = view.board.map((p, i) => {
+      const cls = ['gcell', 'xqp'];
+      if (i === sel) cls.push('sel');
+      else if (targets.has(i)) cls.push('tgt');
+      else if (movable.has(i)) cls.push('can');
+      if (view.last && view.last.to === i) cls.push('last');
+
+      let act = null;
+      if (i === sel)                      act = { t:'sel', k:'xqSel', v: null };
+      else if (myTurn && targets.has(i))  act = { t:'move', from: sel, to: i };
+      else if (myTurn && movable.has(i))  act = { t:'sel', k:'xqSel', v: i };
+
+      const side = p ? (p.c === 'w' ? 'red' : 'blk') : '';
+      return `<div class="${cls.join(' ')}"${act ? ` data-act='${JSON.stringify(act)}'` : ''}
+               >${p ? `<span class="qp ${side}">${XQ_GLYPH[p.c][p.t]}</span>` : ''}</div>`;
+    }).join('');
+
+    const status = view.winner ? `${view.winner === 'w' ? '红方' : '黑方'}赢了`
+      : view.check ? `${view.turn === 'w' ? '红方' : '黑方'}被将军`
+      : myTurn ? '轮到你了'
+      : myColor ? `等 ${esc(nameOf(view.players[view.turn === 'w' ? 0 : 1]))} 走`
+      : '你在旁观';
+
+    return `
+      <div class="banner ${view.winner || myTurn ? 'ok' : view.check ? 'warn' : ''}"
+           style="margin-bottom:12px">
+        ${status}
+        <div class="dim" style="margin-top:4px">
+          帥 ${esc(nameOf(view.players[0]))} · 將 ${esc(nameOf(view.players[1]))}
+          ${myColor ? ` · 你执${myColor === 'w' ? '红' : '黑'}` : ' · 你在旁观'}
+        </div>
+      </div>
+      <div class="gboard chess xq" style="grid-template-columns:repeat(9,1fr)">${cells}</div>
+      <div class="row" style="justify-content:center;margin-top:14px">
+        ${view.winner !== null
+          ? `<button class="btn primary" data-act='{"t":"restart"}'>再来一局</button>`
+          : `<button class="btn ghost sm" data-act='{"t":"unseat"}'>换人</button>`}
+      </div>
+      ${sel != null ? `<div class="note" style="text-align:center;margin-top:10px">
+        选中了 ${xqName(sel)}${targets.size ? '，点绿框走过去' : '，这个子没地方可走'}
+      </div>` : ''}`;
+  },
+};
+
+/* ============================ 狼人杀 ============================
+   和谁是卧底一样，这是款「每个人屏幕上都不一样」的游戏 —— 所以 viewFor 就是全部。
+   界面只负责把「这步轮到谁、该点什么」摆出来，规则一律在 reduce 里。
+
+   一轮的流程：
+     reveal → night.wolf → [night.witch] → [night.seer] → day.announce → day.vote → [day.hunter]
+   方括号那两步，没这个角色（或者女巫的解药已经用掉）就跳过。
+
+   刻意没做的：警长竞选、守卫、白狼王这些扩展角色，发言阶段也不做计时器。
+   真玩的时候这些本来就靠嘴和手机外面的规矩解决，塞进代码只会更难用。 */
+const WW_ROLE_NAME = { wolf:'狼人', seer:'预言家', witch:'女巫', hunter:'猎人', villager:'平民' };
+const WW_ROLE_DESC = {
+  wolf:     '每晚和同伴一起选一个人杀，白天要装成好人。',
+  seer:     '每晚可以验一个人 —— 你会知道他是狼还是好人。',
+  witch:    '今晚谁被杀你会知道，有一瓶解药可以救他，只能用一次。',
+  hunter:   '你被淘汰的时候可以开枪带走一个人。',
+  villager: '没有技能。靠听、靠推理、靠投票把狼找出来。',
+};
+const WW_KEY_BY_NAME = { 狼人:'wolf', 预言家:'seer', 女巫:'witch', 猎人:'hunter', 平民:'villager' };
+const WW_ORDER = ['wolf', 'seer', 'witch', 'hunter', 'villager'];
+const WW_STEP_LABEL = {
+  'reveal':'看身份',
+  'night.wolf':'天黑了 · 狼人行动',
+  'night.witch':'天黑了 · 女巫行动',
+  'night.seer':'天黑了 · 预言家行动',
+  'day.announce':'天亮了',
+  'day.vote':'投票放逐',
+  'day.hunter':'猎人开枪',
+  'over':'结束了',
+};
+
+/** 按人数自动配身份。人越多狼越多，够 6 人才加女巫，够 9 人才加猎人 */
+function wwAutoLineup(n){
+  const lineup = { wolf: n <= 6 ? 2 : n <= 9 ? 3 : 4, seer:1, witch: n >= 6 ? 1 : 0,
+                   hunter: n >= 9 ? 1 : 0, villager: 0 };
+  const used = WW_ORDER.reduce((s, r) => s + (lineup[r] || 0), 0);
+  lineup.villager = Math.max(0, n - used);
+  return lineup;
+}
+/** 方案可以指定一套固定配置；总数对不上就退回自动配置 */
+function wwLineup(n, preset){
+  const custom = preset && preset.lineup;
+  if (custom){
+    const total = WW_ORDER.reduce((s, r) => s + (Number(custom[r]) || 0), 0);
+    if (total === n && (Number(custom.wolf) || 0) > 0) return custom;
+  }
+  return wwAutoLineup(n);
+}
+function wwDeal(players, seed, preset){
+  const lineup = wwLineup(players.length, preset);
+  const bag = [];
+  for (const r of WW_ORDER){
+    for (let i = 0; i < (Number(lineup[r]) || 0); i++) bag.push(r);
+  }
+  const shuf = shuffleWith(bag, seed);
+  const roles = {};
+  players.forEach((id, i) => { roles[id] = shuf.value[i] || 'villager'; });
+  return { roles, seed: shuf.seed };
+}
+
+const wwAliveOf = (state) => state.players.filter(id => !state.dead.includes(id));
+const wwRolesAlive = (state, role) =>
+  state.players.filter(id => state.roles[id] === role && !state.dead.includes(id));
+function wwWinner(state){
+  const alive = wwAliveOf(state);
+  const wolves = alive.filter(id => state.roles[id] === 'wolf').length;
+  if (wolves === 0) return 'good';
+  // 狼人数追平好人 = 屠边，狼赢
+  if (wolves >= alive.length - wolves) return 'wolf';
+  return null;
+}
+function wwTally(votes){
+  const t = {};
+  for (const target of Object.values(votes)){
+    // null = 弃权（房主替掉线的人代打的那一步），不是「投给没人」。
+    // 计进去的话，一张弃权票会变成一个叫 null 的候选，还可能被选成受害者。
+    if (target == null) continue;
+    t[target] = (t[target] || 0) + 1;
+  }
+  return t;
+}
+/** 得票最多的那个；平票返回 null（没谈拢 = 不动人） */
+function wwTopVote(votes){
+  const t = wwTally(votes);
+  let top = null, n = -1, tie = false;
+  for (const [id, c] of Object.entries(t)){
+    if (c > n){ top = id; n = c; tie = false; }
+    else if (c === n) tie = true;
+  }
+  return tie ? null : top;
+}
+/** 狼这一步走完了，下一步该谁 —— 没这个角色就继续往后跳 */
+function wwNightStepAfter(state, cur){
+  const seq = ['wolf', 'witch', 'seer'];
+  for (let k = seq.indexOf(cur) + 1; k < seq.length; k++){
+    const role = seq[k];
+    if (role === 'witch' && state.witchSaveUsed) continue;
+    if (wwRolesAlive(state, role).length) return 'night.' + role;
+  }
+  return 'resolve';
+}
+/** 天亮结算：谁死了、猎人要不要开枪、是不是已经分出胜负 */
+function wwDawn(state){
+  const dead = state.dead.slice();
+  const night = [];
+  if (state.night.victim && !state.night.saved && !dead.includes(state.night.victim)){
+    dead.push(state.night.victim);
+    night.push({ id: state.night.victim, how: '昨晚被杀' });
+  }
+
+  const next = {
+    ...state, dead, lastNight: night,
+    night: { victim:null, saved:false, wolfVotes:{} },
+    votes: {}, tally: null,
+    witchSaveUsed: state.witchSaveUsed || !!state.night.saved,
+  };
+
+  const shot = night.find(d => state.roles[d.id] === 'hunter');
+  if (shot) return { ...next, step:'day.hunter', hunterId: shot.id, hunterNext:'announce' };
+
+  const w = wwWinner(next);
+  if (w) return { ...next, step:'over', winner:w };
+  return { ...next, step:'day.announce' };
+}
+function wwNextRound(state){
+  // lastNight 不清 —— 天亮时 wwDawn 会整条换掉，这里清只会把猎人开枪、
+  // 投出局这些刚发生的事从公屏上抹掉
+  return { ...state, round: state.round + 1, step:'night.wolf',
+           night: { victim:null, saved:false, wolfVotes:{} } };
+}
+
+const werewolfPlugin = {
+  id:'werewolf', name:'狼人杀', icon:'🐺',
+  rhythm: RHYTHM.TABLE, minPlayers: 5, maxPlayers: 12,
+  createInitialState({ members, seed, preset }){
+    const players = members.map(m => m.id);
+    const dealt = wwDeal(players, seed, preset);
+    return {
+      gameId:'werewolf', seed: dealt.seed,
+      players, roles: dealt.roles,
+      dead: [], seen: {},
+      round: 1,
+      step: 'reveal',
+      night: { victim:null, saved:false, wolfVotes:{} },
+      checks: [],                   // 预言家的验人记录，只有本人看得到
+      votes: {}, tally: null,
+      witchSaveUsed: false,
+      hunterId: null, hunterNext: null,
+      lastNight: [],
+      winner: null,
+    };
+  },
+  canApply(state, actorId, action){
+    if (action.t === 'restart') return state.step === 'over';
+    if (!state.players.includes(actorId)) return false;      // 不在局里的人不能动
+    const alive = !state.dead.includes(actorId);
+    const role = state.roles[actorId];
+    const targetOk = (t, allowSelf) =>
+      state.players.includes(t) && !state.dead.includes(t) && (allowSelf || t !== actorId);
+
+    switch (action.t){
+      case 'seen':    return state.step === 'reveal' && !state.seen[actorId];
+      case 'kill':    return state.step === 'night.wolf'  && alive && role === 'wolf' && targetOk(action.target);
+      case 'save':    return state.step === 'night.witch' && alive && role === 'witch' && !state.witchSaveUsed;
+      case 'check':   return state.step === 'night.seer'  && alive && role === 'seer'  && targetOk(action.target);
+      case 'toVote':  return state.step === 'day.announce' && alive;
+      // 用 in 而不是真值判断：弃权记的是 null，用真值判断会让弃过权的人再投一次
+      case 'vote':    return state.step === 'day.vote' && alive && !(actorId in state.votes) && targetOk(action.target);
+      case 'shoot':   return state.step === 'day.hunter' && state.hunterId === actorId
+                             && (action.target === null || targetOk(action.target));
+      default:        return false;
+    }
+  },
+  reduce(state, action){
+    switch (action.t){
+      case 'seen': {
+        const seen = { ...state.seen, [action.by]: true };
+        const all = state.players.every(id => seen[id]);
+        return { ...state, seen, step: all ? 'night.wolf' : 'reveal' };
+      }
+      case 'kill': {
+        const wolfVotes = { ...state.night.wolfVotes, [action.by]: action.target };
+        const wolves = wwRolesAlive(state, 'wolf');
+        // 用 in 而不是真值判断 —— 弃权记的是 null，用真值判断会把这个狼
+        // 永远当成「还没表态」，局面照样卡死
+        if (!wolves.every(id => id in wolfVotes)){
+          return { ...state, night: { ...state.night, wolfVotes } };   // 还有狼没表态
+        }
+        // 狼都指完了：平票 = 内部没谈拢，今晚空刀
+        const night = { ...state.night, wolfVotes, victim: wwTopVote(wolfVotes) };
+        const st = { ...state, night };
+        const nextStep = wwNightStepAfter(st, 'wolf');
+        return nextStep === 'resolve' ? wwDawn(st) : { ...st, step: nextStep };
+      }
+      case 'save': {
+        const st = { ...state, night: { ...state.night, saved: !!action.save } };
+        const nextStep = wwNightStepAfter(st, 'witch');
+        return nextStep === 'resolve' ? wwDawn(st) : { ...st, step: nextStep };
+      }
+      case 'check': {
+        // 弃权：验人记录里什么都不留。记一条 {target:null, wolf:false} 等于
+        // 给预言家凭空塞一次「不是狼」的验人结果 —— 那是假情报
+        const entry = action.target == null
+          ? []
+          : [{ by: action.by, target: action.target, wolf: state.roles[action.target] === 'wolf' }];
+        const st = { ...state, checks: state.checks.concat(entry) };
+        const nextStep = wwNightStepAfter(st, 'seer');
+        return nextStep === 'resolve' ? wwDawn(st) : { ...st, step: nextStep };
+      }
+      case 'toVote':
+        return { ...state, step:'day.vote', votes:{}, tally:null };
+      case 'vote': {
+        const votes = { ...state.votes, [action.by]: action.target };
+        const voters = wwAliveOf(state);
+        // 同 kill：弃权是 null，得按「有没有这把键」算表态
+        if (!voters.every(id => id in votes)) return { ...state, votes };
+
+        const out = wwTopVote(votes);
+        const dead = out ? state.dead.concat([out]) : state.dead;
+        const next = { ...state, dead, votes:{}, tally: wwTally(votes),
+                       lastNight: out ? [{ id: out, how:'被投票放逐' }] : [] };
+        if (out && state.roles[out] === 'hunter'){
+          return { ...next, step:'day.hunter', hunterId: out, hunterNext:'nextRound' };
+        }
+        const w = wwWinner(next);
+        if (w) return { ...next, step:'over', winner:w };
+        return wwNextRound(next);
+      }
+      case 'shoot': {
+        const dead = action.target ? state.dead.concat([action.target]) : state.dead;
+        const next = { ...state, dead, hunterId: null,
+                       lastNight: state.lastNight.concat(
+                         action.target ? [{ id: action.target, how:'被猎人带走' }] : []) };
+        const w = wwWinner(next);
+        if (w) return { ...next, step:'over', winner:w };
+        return state.hunterNext === 'nextRound'
+          ? wwNextRound({ ...next, hunterNext:null })
+          : { ...next, step:'day.announce', hunterNext:null };
+      }
+      case 'restart':
+        return this.createInitialState({ members: state.players.map(id => ({ id })), seed: nextSeed(state.seed) });
+      default:
+        return state;
+    }
+  },
+  summarize(s){
+    if (s.winner) return s.winner === 'wolf' ? '狼人赢' : '好人赢';
+    return `第 ${s.round} 轮，还剩 ${wwAliveOf(s).length} 人`;
+  },
+
+  /* ★ 安全边界。这里的每一行都值得盯一眼：
+       - 全场身份只在结算后才公开（roles: over ? … : null）
+       - 狼队友名单只给狼
+       - 预言家的验人记录只给自己的那几条
+       - 今晚谁被杀，只有女巫看得到 —— 白天公布的是「结果」，不是「谁下的手」
+     白天投票进行中只回传「谁投过了」，绝不回传「投给了谁」。 */
+  viewFor(state, viewerId){
+    const me = state.players.includes(viewerId) ? viewerId : null;
+    const over = state.step === 'over';
+    const role = me ? state.roles[me] : null;
+
+    const view = {
+      gameId:'werewolf',
+      players: state.players,
+      dead: state.dead,
+      alive: wwAliveOf(state),
+      round: state.round,
+      step: state.step,
+      label: WW_STEP_LABEL[state.step] || '',
+      seenCount: Object.keys(state.seen).length,
+      lastNight: state.lastNight,
+      tally: state.step === 'day.vote' ? null : state.tally,
+      winner: over ? state.winner : null,
+      roles: over ? { ...state.roles } : null,
+      hunterId: state.step === 'day.hunter' ? state.hunterId : null,
+      votedIn: state.step === 'day.vote' ? Object.keys(state.votes) : null,
+      me,
+      myRole: role,
+      iAmDead: me ? state.dead.includes(me) : false,
+      iHaveSeen: me ? !!state.seen[me] : false,
+      myVote: (me && state.step === 'day.vote') ? (state.votes[me] || null) : null,
+    };
+    if (!me) return view;
+
+    if (role === 'wolf') view.pack = state.players.filter(id => state.roles[id] === 'wolf');
+    if (role === 'seer'){
+      view.checks = state.checks.filter(c => c.by === me).map(c => ({ target:c.target, wolf:c.wolf }));
+    }
+    if (role === 'wolf' && state.step === 'night.wolf') view.wolfVotes = { ...state.night.wolfVotes };
+    if (role === 'witch' && state.step === 'night.witch'){
+      view.victim = state.night.victim;
+      view.canSave = !state.witchSaveUsed;
+    }
+    return view;
+  },
+  render(view, ctx){
+    const nameOf = id => (ctx.members.find(m => m.id === id) || {}).name || '?';
+    const roleCard = (r) => r ? `<span class="tag">${WW_ROLE_NAME[r]}</span>` : '';
+
+    const head = `
+      <div class="banner ${view.step === 'over' ? 'ok' : ''}" style="margin-bottom:12px">
+        ${view.label}
+        <div class="dim" style="margin-top:4px">
+          第 ${view.round} 轮 · 还剩 ${view.alive.length} 人
+          ${view.myRole ? ` · 你是 ${WW_ROLE_NAME[view.myRole]}` : ' · 你在旁观'}
+          ${view.iAmDead && view.step !== 'over' ? ' · 你已出局（可以继续看）' : ''}
+        </div>
+      </div>`;
+
+    const roster = `
+      <div class="row" style="flex-wrap:wrap;gap:6px;justify-content:center;margin-top:14px">
+        ${view.players.map(id => `<span class="tag ${view.dead.includes(id) ? '' : 'mine'}"
+          style="${view.dead.includes(id) ? 'opacity:.45;text-decoration:line-through' : ''}"
+          >${esc(nameOf(id))}${view.dead.includes(id) ? ' ☠' : ''}</span>`).join('')}
+      </div>`;
+
+    /* ---- 结算 ---- */
+    if (view.step === 'over'){
+      return `${head}
+        <div class="big" style="text-align:center;padding:10px 0 18px">
+          ${view.winner === 'wolf' ? '狼人赢了' : '好人赢了'}
+        </div>
+        <div class="note">身份公开：</div>
+        <div class="row" style="flex-wrap:wrap;gap:6px;justify-content:center">
+          ${view.players.map(id => `<span class="tag">${esc(nameOf(id))} · ${WW_ROLE_NAME[view.roles[id]]}</span>`).join('')}
+        </div>
+        <div class="row" style="justify-content:center;margin-top:16px">
+          <button class="btn primary" data-act='{"t":"restart"}'>再来一局</button>
+        </div>`;
+    }
+
+    /* ---- 看身份 ---- */
+    if (view.step === 'reveal'){
+      if (!view.me){
+        return `${head}<div class="big" style="font-size:18px;padding:30px 0;text-align:center">
+          等大家各自看身份…（已看 ${view.seenCount}/${view.players.length}）</div>`;
+      }
+      if (!view.iHaveSeen){
+        return `${head}
+          <div class="big" style="font-size:20px;padding:34px 0;text-align:center">
+            点下面看你的身份，别让旁边的人看到
+          </div>
+          <div class="row" style="justify-content:center">
+            <button class="btn primary" data-act='{"t":"seen"}'>看我的身份</button>
+          </div>`;
+      }
+      const pack = view.pack && view.pack.length > 1
+        ? `<div class="note" style="text-align:center">你的同伙：${view.pack.filter(i=>i!==view.me).map(i=>esc(nameOf(i))).join('、')}</div>`
+        : '';
+      return `${head}
+        <div style="text-align:center;padding:18px 0 6px">
+          <div class="big" style="font-size:32px">${WW_ROLE_NAME[view.myRole]}</div>
+          ${roleCard(view.myRole)}
+        </div>
+        <div class="note" style="text-align:center">${WW_ROLE_DESC[view.myRole]}</div>
+        ${pack}
+        <div class="row" style="justify-content:center;margin-top:10px">
+          <span class="dim">已看 ${view.seenCount}/${view.players.length}，等都看完就天黑</span>
+        </div>`;
+    }
+
+    /* ---- 夜里 ---- */
+    if (view.step.startsWith('night.')){
+      const stepRole = view.step.slice('night.'.length);          // wolf / witch / seer
+      const iAmActor = view.myRole === stepRole && !view.iAmDead;
+      if (!iAmActor){
+        return `${head}
+          <div class="big" style="font-size:18px;padding:30px 0;text-align:center">
+            天黑了，请闭眼
+          </div>
+          <div class="note" style="text-align:center">
+            ${stepRole === 'wolf' ? '狼人正在选人' : stepRole === 'witch' ? '女巫正在考虑' : '预言家正在验人'}…
+          </div>${roster}`;
+      }
+
+      const act = view.step === 'night.wolf' ? 'kill' : view.step === 'night.witch' ? 'save' : 'check';
+      const alive = view.alive.filter(id => id !== view.me);
+      const picks = `<div class="row" style="flex-wrap:wrap;gap:8px;justify-content:center">
+        ${alive.map(id => `<button class="btn ghost sm"
+          data-act='${JSON.stringify({ t: act, target:id })}'>${esc(nameOf(id))}</button>`).join('')}
+      </div>`;
+
+      let extra = '';
+      if (act === 'kill' && view.wolfVotes){
+        const n = Object.keys(view.wolfVotes).length;
+        extra = `<div class="note" style="text-align:center">同伙已指 ${n} 人${
+          n ? `，目前指向 ${esc(nameOf(Object.values(view.wolfVotes).slice(-1)[0]))}` : ''}</div>`;
+      }
+      if (act === 'check' && view.checks && view.checks.length){
+        extra = `<div class="note">你验过的：${view.checks.map(c =>
+          `${esc(nameOf(c.target))} 是${c.wolf ? '狼' : '好人'}`).join('；')}</div>`;
+      }
+
+      if (act === 'save'){
+        // 女巫这一步没有「选人」，只有救或不救
+        const victim = view.victim ? esc(nameOf(view.victim)) : '没有人';
+        return `${head}
+          <div class="big" style="text-align:center;padding:14px 0 6px;font-size:22px">
+            今晚倒下的是：${victim}
+          </div>
+          ${view.canSave ? `
+            <div class="row" style="justify-content:center;gap:10px">
+              <button class="btn primary" data-act='{"t":"save","save":true}'>用解药救他</button>
+              <button class="btn ghost" data-act='{"t":"save","save":false}'>不救</button>
+            </div>
+            <div class="note" style="text-align:center">解药只有一瓶，用掉就没了</div>`
+          : `<div class="note" style="text-align:center">你的解药已经用掉了，只能眼睁睁看着</div>
+             <div class="row" style="justify-content:center">
+               <button class="btn ghost" data-act='{"t":"save","save":false}'>知道了</button>
+             </div>`}`;
+      }
+
+      return `${head}
+        <div class="note" style="text-align:center">
+          ${act === 'kill' ? '选一个人，今晚杀掉他' : '选一个人，验他的身份'}
+        </div>
+        ${picks}${extra}${roster}`;
+    }
+
+    /* ---- 天亮公布 ---- */
+    if (view.step === 'day.announce'){
+      const news = view.lastNight.length
+        ? `昨晚倒下的是 <b>${view.lastNight.map(d => esc(nameOf(d.id))).join('、')}</b>`
+        : '昨晚是个平安夜，没有人倒下';
+      return `${head}
+        <div class="big" style="text-align:center;padding:18px 0">${news}</div>
+        <div class="note" style="text-align:center">先讨论，聊够了再开始投票</div>
+        ${roster}
+        <div class="row" style="justify-content:center;margin-top:16px">
+          ${view.me && !view.iAmDead
+            ? `<button class="btn primary" data-act='{"t":"toVote"}'>开始投票</button>`
+            : `<span class="dim">等局内的人开始投票</span>`}
+        </div>`;
+    }
+
+    /* ---- 投票 ---- */
+    if (view.step === 'day.vote'){
+      const voted = view.votedIn || [];
+      const notYet = view.alive.filter(id => !voted.includes(id));
+      if (!view.me || view.iAmDead){
+        return `${head}
+          <div class="note" style="text-align:center">大家正在投票…（已投 ${voted.length}/${view.alive.length}）</div>${roster}`;
+      }
+      if (view.myVote){
+        return `${head}
+          <div class="big" style="text-align:center;padding:16px 0 4px">
+            你投了 ${esc(nameOf(view.myVote))}
+          </div>
+          <div class="note" style="text-align:center">
+            已投 ${voted.length}/${view.alive.length}${notYet.length ? `，等 ${notYet.map(i=>esc(nameOf(i))).join('、')}` : '，马上开票'}
+          </div>${roster}`;
+      }
+      return `${head}
+        <div class="note" style="text-align:center">投给谁？出局的人会亮身份</div>
+        <div class="row" style="flex-wrap:wrap;gap:8px;justify-content:center">
+          ${view.alive.filter(id => id !== view.me).map(id => `<button class="btn ghost sm"
+            data-act='${JSON.stringify({ t:'vote', target:id })}'>${esc(nameOf(id))}</button>`).join('')}
+        </div>
+        <div class="note" style="text-align:center">已投 ${voted.length}/${view.alive.length}</div>${roster}`;
+    }
+
+    /* ---- 猎人开枪 ---- */
+    if (view.step === 'day.hunter'){
+      const mine = view.hunterId === view.me;
+      if (!mine){
+        return `${head}
+          <div class="note" style="text-align:center">
+            猎人 ${esc(nameOf(view.hunterId))} 出局了，正在决定带走谁…
+          </div>${roster}`;
+      }
+      return `${head}
+        <div class="big" style="text-align:center;padding:14px 0 4px">你出局了，可以开枪带走一个人</div>
+        <div class="row" style="flex-wrap:wrap;gap:8px;justify-content:center">
+          ${view.alive.filter(id => id !== view.me).map(id => `<button class="btn ghost sm"
+            data-act='${JSON.stringify({ t:'shoot', target:id })}'>${esc(nameOf(id))}</button>`).join('')}
+        </div>
+        <div class="row" style="justify-content:center;margin-top:12px">
+          <button class="btn ghost sm" data-act='{"t":"shoot","target":null}'>放弃开枪</button>
+        </div>${roster}`;
+    }
+
+    return `${head}${roster}`;
+  },
+
+  presets: [
+    { name:'标准局', note:'按人数自动配：狼人 + 预言家 + 女巫 + 猎人 + 平民', data:{ lineup:null } },
+    { name:'8 人固定局', note:'2 狼 1 预言家 1 女巫 4 平民，人数正好 8 才生效',
+      data:{ lineup:{ wolf:2, seer:1, witch:1, hunter:0, villager:4 } } },
+    { name:'纯推理局', note:'没有女巫也没有猎人，只靠预言家和投票',
+      data:{ lineup:{ wolf:2, seer:1, witch:0, hunter:0, villager:3 } } },
+  ],
+  presetHint: '每行写「角色=人数」，比如「狼人=2」',
+  readPreset(text){
+    const lineup = {};
+    let any = false;
+    for (const line of lines(text, 20)){
+      const m = line.split(/[=＝:：\s]+/).filter(Boolean);
+      if (m.length < 2) continue;
+      const k = WW_KEY_BY_NAME[m[0]];
+      const v = parseInt(m[1], 10);
+      if (!k || !Number.isFinite(v) || v < 0) continue;
+      lineup[k] = v; any = true;
+    }
+    return any ? { lineup } : null;
+  },
+  presetToText(data){
+    const l = (data && data.lineup) || wwAutoLineup(8);
+    return WW_ORDER.map(r => `${WW_ROLE_NAME[r]}=${Number(l[r]) || 0}`).join('\n');
+  },
+
+  /* 掉线的人卡在哪一步，就替他走哪一步。每一格都能直接交回给 reduce ——
+     弃权用 target:null 表示（见 reduce 里的 kill / check / vote 分支）。
+     不在这个 step 上、或者这人根本没卡住什么，就回 null。 */
+  skip(state, id){
+    if (!state.players.includes(id)) return null;
+    const alive = !state.dead.includes(id);
+    const role = state.roles[id];
+    const self = (t, extra) => this.reduce(state, { t, by: id, ...extra });
+
+    switch (state.step){
+      case 'reveal':
+        return state.seen[id] ? null : self('seen');
+
+      case 'night.wolf':
+        // 死狼不用表态；已经投过的也不用
+        if (!alive || role !== 'wolf' || (id in state.night.wolfVotes)) return null;
+        return self('kill', { target: null });
+
+      case 'night.witch':
+        // save:false 本来就是合法动作，不需要额外开弃权口子
+        if (!alive || role !== 'witch' || state.witchSaveUsed) return null;
+        return self('save', { save: false });
+
+      case 'night.seer':
+        if (!alive || role !== 'seer') return null;
+        return self('check', { target: null });
+
+      case 'day.vote':
+        if (!alive || (id in state.votes)) return null;
+        return self('vote', { target: null });
+
+      case 'day.hunter':
+        // shoot 本来就接受 target:null（弃权不带走人）
+        return state.hunterId === id ? self('shoot', { target: null }) : null;
+
+      default:
+        return null;
+    }
+  },
+};
+
+/* ============================ 你画我猜 ============================
+   这是唯一一款「光靠 HTML 字符串表达不了」的游戏 —— 画布得等节点真的挂上去
+   之后才能画、才能接指针。所以契约多了个可选钩子：
+
+     afterRender(view, ctx, root)   // root 是本端已经挂好的容器节点
+
+   只有这个钩子能碰 DOM，而且只碰自己那一块。核心域其余部分照旧不依赖 DOM。
+
+   画的时候，正在画的那一笔**只活在本端**（存在 ctx.ui 里），抬笔才把整条线
+   作为一个动作提交上去。这样一是不用每挪一下手指就发一条消息，二是规则层
+   完全不用知道「手指正在动」这回事 —— 它收到的永远是一条画完的线。
+
+   猜词同理：猜对了的那个词不能跟着 guesses 一起过线，不然答案就提前泄了
+   （见 viewFor 里那句 text: g.correct ? null : g.text）。 */
+const DRAW_WORDS = [
+  '太阳','月亮','雨伞','冰淇淋','大象','长颈鹿','自行车','飞机','吉他','汉堡',
+  '恐龙','眼镜','雪人','灯塔','章鱼','西瓜','火箭','雨鞋','猫','蛋糕',
+  '仙人掌','红绿灯','摩天轮','企鹅','台灯','火锅','沙漏','风筝','梯子','蜡烛',
+];
+const DG_COLORS = ['#ffffff', '#ff6b6b', '#ffd166', '#5fd39a', '#6cb6ff', '#c792ea'];
+const DG_MAX_STROKES = 400;
+const DG_MAX_POINTS = 600;
+
+const dgClamp01 = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+};
+/** 猜词比对：去掉空白和标点、统一小写，「冰淇淋」和「冰淇淋！」算同一个。
+    标点逐个列出来、不写成区间 —— 写成区间很容易手一滑把某个汉字也圈进去。 */
+function dgNormalize(s){
+  return String(s == null ? '' : s)
+    .toLowerCase()
+    .replace(/\s/g, '')
+    .replace(/[.,!?;:'"()[\]{}<>/\\|~_+=*&^%$#@`、。，！？；：""''（）【】《》〈〉「」『』…—－·～\-]/g, '');
+}
+/** 把一堆线画到画布上。坐标是 0..1 的归一化值，所以换台设备也不会变形 */
+function dgPaint(g, w, h, strokes){
+  if (!g || typeof g.clearRect !== 'function') return;
+  g.clearRect(0, 0, w, h);
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.lineWidth = Math.max(2, Math.round(w / 110));
+  for (const s of strokes || []){
+    const pts = s && s.points;
+    if (!pts || pts.length < 2) continue;
+    g.strokeStyle = s.color || '#ffffff';
+    g.beginPath();
+    g.moveTo(pts[0].x * w, pts[0].y * h);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x * w, pts[i].y * h);
+    g.stroke();
+  }
+}
+
+const drawguessPlugin = {
+  id:'drawguess', name:'你画我猜', icon:'🎨',
+  rhythm: RHYTHM.TABLE, minPlayers: 3, maxPlayers: 12,
+  // 画笔颜色要一直留着 —— 画完一笔就把颜色弹回白色太烦了。
+  // 猜词框则相反，提交完就该空掉，所以不列在这儿。
+  uiKeep: ['dgColor'],
+  createInitialState({ members, seed, preset }){
+    const words = (preset && Array.isArray(preset.words) && preset.words.length >= 2)
+      ? preset.words : DRAW_WORDS;
+    const p = draw(seed, words.length);
+    return {
+      gameId:'drawguess', seed: p.seed,
+      players: members.map(m => m.id),
+      words,
+      word: words[p.value],
+      drawerIdx: 0,
+      round: 1,
+      strokes: [],
+      guesses: [],
+      solvedBy: null,
+      gaveUp: false,
+      step: 'drawing',              // drawing → result
+    };
+  },
+  canApply(state, actorId, action){
+    if (action.t === 'restart') return state.step === 'result';
+    if (!state.players.includes(actorId)) return false;
+    const isDrawer = state.players[state.drawerIdx] === actorId;
+    switch (action.t){
+      case 'stroke':
+        return state.step === 'drawing' && isDrawer
+               && Array.isArray(action.points) && action.points.length >= 2;
+      case 'undo':
+      case 'clear':
+      case 'giveUp':
+        return state.step === 'drawing' && isDrawer;
+      case 'guess':
+        return state.step === 'drawing' && !isDrawer
+               && typeof action.text === 'string' && action.text.trim().length > 0;
+      case 'next':
+        return state.step === 'result';
+      default:
+        return false;
+    }
+  },
+  reduce(state, action){
+    switch (action.t){
+      case 'stroke': {
+        const pts = action.points.slice(0, DG_MAX_POINTS)
+          .map(p => ({ x: dgClamp01(p.x), y: dgClamp01(p.y) }));
+        const stroke = { points: pts, color: action.color || '#ffffff' };
+        return { ...state, strokes: state.strokes.concat([stroke]).slice(-DG_MAX_STROKES) };
+      }
+      case 'undo':  return { ...state, strokes: state.strokes.slice(0, -1) };
+      case 'clear': return { ...state, strokes: [] };
+      case 'giveUp':return { ...state, step:'result', gaveUp:true };
+      case 'guess': {
+        const text = String(action.text).trim().slice(0, 24);
+        const correct = dgNormalize(text) === dgNormalize(state.word);
+        const guesses = state.guesses.concat([{ by: action.by, text, correct }]).slice(-40);
+        return correct
+          ? { ...state, guesses, solvedBy: action.by, step:'result' }
+          : { ...state, guesses };
+      }
+      case 'next': {
+        const p = draw(nextSeed(state.seed), state.words.length);
+        return { ...state, seed: p.seed, word: state.words[p.value],
+                 drawerIdx: (state.drawerIdx + 1) % state.players.length,
+                 round: state.round + 1,
+                 strokes: [], guesses: [], solvedBy: null, gaveUp: false,
+                 step:'drawing' };
+      }
+      case 'restart':
+        // 重开但人不动、词库也不动 —— 自定义过的词库不该被洗回默认的
+        return this.createInitialState({ members: state.players.map(id => ({ id })),
+                                         seed: nextSeed(state.seed),
+                                         preset: { words: state.words } });
+      default:
+        return state;
+    }
+  },
+  summarize(s){
+    if (s.solvedBy) return `第 ${s.round} 轮被猜出来了`;
+    if (s.gaveUp) return `第 ${s.round} 轮没人猜出来`;
+    return `画到第 ${s.round} 轮`;
+  },
+
+  /* ★ 安全边界：这个词在结算之前只发给画的人。
+     另外，猜对了的那条猜测里的**文本**也不能发出去 —— 那条文本就是答案。 */
+  viewFor(state, viewerId){
+    const me = state.players.includes(viewerId) ? viewerId : null;
+    const reveal = state.step === 'result';
+    const isDrawer = !!me && state.players[state.drawerIdx] === me;
+    return {
+      gameId:'drawguess',
+      players: state.players,
+      drawer: state.players[state.drawerIdx],
+      round: state.round,
+      step: state.step,
+      strokes: state.strokes,
+      solvedBy: state.solvedBy,
+      gaveUp: state.gaveUp,
+      word: (isDrawer || reveal) ? state.word : null,
+      wordLen: state.word ? state.word.length : 0,
+      guesses: state.guesses.map(g => ({
+        by: g.by, correct: g.correct,
+        text: g.correct ? null : g.text,
+      })),
+      me, iAmDrawer: isDrawer,
+    };
+  },
+  render(view, ctx){
+    // ctx.ui 是可选契约 —— 契约测试会拿一个没有它的 ctx 来渲染，别在这儿崩
+    const ui = ctx.ui || {};
+    const nameOf = id => (ctx.members.find(m => m.id === id) || {}).name || '?';
+    const drawerName = esc(nameOf(view.drawer));
+
+    const board = `
+      <canvas id="dgCanvas" class="dgcanvas"></canvas>`;
+
+    const who = `
+      <div class="banner ${view.step === 'result' ? 'ok' : ''}" style="margin-bottom:12px">
+        第 ${view.round} 轮 · 轮到 <b>${drawerName}</b> 画
+        <div class="dim" style="margin-top:4px">
+          ${view.iAmDrawer ? '你是画的人' : `词有 ${view.wordLen} 个字`}
+        </div>
+      </div>`;
+
+    if (view.step === 'result'){
+      const news = view.solvedBy
+        ? `<b>${esc(nameOf(view.solvedBy))}</b> 猜出来了`
+        : (view.gaveUp ? '没人猜出来，画的人放弃了' : '这一轮结束了');
+      return `${who}
+        <div class="big" style="text-align:center;padding:8px 0 4px">答案是「${esc(view.word || '')}」</div>
+        <div class="note" style="text-align:center">${news}</div>
+        <div class="card" style="margin-top:14px">${board}</div>
+        <div class="row" style="justify-content:center;margin-top:14px">
+          <button class="btn primary" data-act='{"t":"next"}'>下一轮（换人画）</button>
+          <button class="btn ghost sm" data-act='{"t":"restart"}'>重开</button>
+        </div>`;
+    }
+
+    const tools = view.iAmDrawer ? `
+      <div class="row" style="justify-content:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+        ${DG_COLORS.map((c, i) => `<button class="dgcolor${(ui.dgColor || DG_COLORS[0]) === c ? ' on' : ''}"
+           style="background:${c}" data-act='${JSON.stringify({ t:'sel', k:'dgColor', v:c })}'
+           aria-label="颜色 ${i + 1}"></button>`).join('')}
+        <button class="btn ghost sm" data-act='{"t":"undo"}'>撤销一笔</button>
+        <button class="btn ghost sm" data-act='{"t":"clear"}'>全清</button>
+        <button class="btn ghost sm" data-act='{"t":"giveUp"}'>放弃</button>
+      </div>
+      <div class="note" style="text-align:center;margin-top:10px">
+        你要画的是：<b style="font-size:20px">${esc(view.word || '')}</b> —— 别念出来
+      </div>` : `
+      <div class="row" style="justify-content:center;gap:8px;margin-top:10px">
+        <input id="dgGuess" data-ui="dgGuess" class="ginput" maxlength="24"
+               placeholder="猜猜是什么" autocomplete="off" value="${esc(ui.dgGuess || '')}">
+        <button class="btn primary" data-act='{"t":"guess","textFrom":"dgGuess"}'>猜</button>
+      </div>`;
+
+    const guesses = view.guesses.length ? `
+      <div class="note" style="margin-top:12px">大家猜过的：</div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        ${view.guesses.slice(-12).map(g => `<span class="tag${g.correct ? ' mine' : ''}"
+          >${esc(nameOf(g.by))}：${g.correct ? '✔ 猜中了' : esc(g.text)}</span>`).join('')}
+      </div>` : '';
+
+    return `${who}<div class="card">${board}</div>${tools}${guesses}`;
+  },
+
+  /* 只有这个钩子碰 DOM。节点拿不到就安静退出 —— 无头环境里不该炸 */
+  afterRender(view, ctx, root){
+    if (!root || typeof root.querySelector !== 'function') return;
+
+    // 猜词框：手机上顺手按回车就该算提交，不该逼人腾出手去点那个按钮
+    const inp = root.querySelector('#dgGuess');
+    if (inp && typeof inp.addEventListener === 'function' && typeof ctx.submit === 'function'){
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && String(inp.value).trim()) ctx.submit({ t:'guess', text: inp.value });
+      });
+    }
+
+    const cv = root.querySelector('canvas');
+    if (!cv || typeof cv.getContext !== 'function') return;
+    const g = cv.getContext('2d');
+    if (!g) return;
+
+    const w = cv.clientWidth || 320, h = cv.clientHeight || 320;
+    // 高清屏上按设备像素比放大背板，不然线是糊的。typeof 兜底是因为
+    // 核心块要能在没有 window 的环境（Node）里跑
+    const dpr = (typeof devicePixelRatio === 'number' && devicePixelRatio > 0)
+      ? Math.min(2, devicePixelRatio) : 1;
+    const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+    if (cv.width !== bw) cv.width = bw;
+    if (cv.height !== bh) cv.height = bh;
+
+    const color = (ctx.ui && ctx.ui.dgColor) || DG_COLORS[0];
+    dgPaint(g, bw, bh, view.strokes);
+    if (!view.iAmDrawer || view.step !== 'drawing') return;
+
+    let cur = null;
+    const pos = (e) => {
+      const r = (typeof cv.getBoundingClientRect === 'function')
+        ? cv.getBoundingClientRect() : { left:0, top:0, width:w, height:h };
+      return { x: dgClamp01((e.clientX - r.left) / (r.width || w)),
+               y: dgClamp01((e.clientY - r.top) / (r.height || h)) };
+    };
+    const repaint = () => dgPaint(g, w, h,
+      cur ? view.strokes.concat([{ points: cur, color }]) : view.strokes);
+
+    cv.addEventListener('pointerdown', (e) => {
+      if (typeof cv.setPointerCapture === 'function'){
+        try { cv.setPointerCapture(e.pointerId); } catch {}
+      }
+      cur = [pos(e)];
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!cur) return;
+      cur.push(pos(e));
+      repaint();
+    });
+    const finish = () => {
+      const pts = cur;
+      cur = null;
+      if (pts && pts.length >= 2) ctx.submit({ t:'stroke', points: pts, color });
+      else repaint();
+    };
+    cv.addEventListener('pointerup', finish);
+    cv.addEventListener('pointercancel', finish);
+  },
+
+  presets: [
+    { name:'日常物件', note:'三十个最好上手的', data:{ words: DRAW_WORDS } },
+    { name:'吃的', note:'饭桌上用', data:{ words:[
+      '火锅','冰淇淋','汉堡','西瓜','蛋糕','面条','烤串','珍珠奶茶',
+      '饺子','披萨','棒棒糖','爆米花','煎蛋','寿司','月饼','糖葫芦',
+    ] } },
+    { name:'动物', note:'家里有小孩的话很合适', data:{ words:[
+      '大象','长颈鹿','章鱼','企鹅','猫','小狗','熊猫','刺猬',
+      '袋鼠','蜗牛','鲸鱼','孔雀','乌龟','蝙蝠','螃蟹','松鼠',
+    ] } },
+  ],
+  presetHint: '一行一个词',
+  readPreset(text){
+    const words = lines(text, 200);
+    return words.length >= 2 ? { words } : null;
+  },
+  presetToText(data){ return ((data && data.words) || DRAW_WORDS).join('\n'); },
+
+  /* 画手不见了，这一轮就到此为止 —— 判「没人猜出来」，跟画手主动放弃
+     是同一条路。结算之后轮到别人按「下一轮」，那一步本来就不绑人。 */
+  skip(state, id){
+    if (state.step === 'drawing' && state.players[state.drawerIdx] === id){
+      return this.reduce(state, { t:'giveUp', by: id });
+    }
+    return null;
+  },
+};
+
+/* ---------- 注册表：加一款游戏 = 加一个目录 + 这里加一行 ---------- */
+const GAME_PLUGINS = [ dicePlugin, wheelPlugin, undercoverPlugin,
+                      gachaPlugin, scoreboardPlugin, gomokuPlugin,
+                      chessPlugin, xiangqiPlugin, werewolfPlugin,
+                      drawguessPlugin ];
+const pluginById = id => GAME_PLUGINS.find(p => p.id === id) || null;
+
+/* ---------- 方案 ----------
+   没有服务端，所以「方案市场」只能是这三样：
+     1. 内置种子方案 —— 直接从插件里长出来，插件加了方案这里自动就有
+     2. 本地另存 —— 存在这台设备的 localStorage 里
+     3. 分享码 —— 一段纯文本，微信发过去或者贴进二维码都行
+   刻意不做账号、不做云同步、不做排行榜：那三样都要服务器，
+   而「不依赖外网」是这个项目的定位本身。 */
+
+const PRESET_KEY = 'gatherpop.presets.v1';
+
+/** Node 里没有 localStorage，测试用这个顶上 */
+const memoryStore = {
+  _m: {},
+  getItem(k){ return k in this._m ? this._m[k] : null; },
+  setItem(k, v){ this._m[k] = String(v); },
+  removeItem(k){ delete this._m[k]; },
+};
+function presetStore(){
+  // 隐私模式下 localStorage 会直接抛异常，所以每次都试
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage){
+      localStorage.setItem('__gp_t', '1'); localStorage.removeItem('__gp_t');
+      return localStorage;
+    }
+  } catch { /* 用不了就退回内存，功能不残 */ }
+  return memoryStore;
+}
+
+/** 官方种子：直接从插件长出来 */
+function builtinPresets(gameId){
+  const p = pluginById(gameId);
+  if (!p || !Array.isArray(p.presets)) return [];
+  return p.presets.map((x, i) => ({
+    id: `${gameId}:official:${i}`, gameId,
+    name: x.name, note: x.note || '', data: x.data, official: true,
+  }));
+}
+
+function isPreset(x){
+  return !!x && typeof x === 'object'
+      && typeof x.gameId === 'string' && !!pluginById(x.gameId)
+      && x.data && typeof x.data === 'object' && !Array.isArray(x.data)
+      && typeof x.name === 'string';
+}
+
+function loadMyPresets(){
+  try {
+    const arr = JSON.parse(presetStore().getItem(PRESET_KEY) || '[]');
+    return Array.isArray(arr) ? arr.filter(isPreset) : [];
+  } catch { return []; }          // 存坏了就当没有，不连带把房间弄崩
+}
+function saveMyPresets(list){
+  try { presetStore().setItem(PRESET_KEY, JSON.stringify(list.filter(isPreset).slice(0, 80))); return true; }
+  catch { return false; }
+}
+
+/** 这台设备能用的全部方案：官方的 + 自己存的 */
+function presetsFor(gameId){
+  return builtinPresets(gameId).concat(loadMyPresets().filter(p => p.gameId === gameId));
+}
+
+/* ---------- 分享码 ----------
+   就是个 base64url 过的 JSON。不带服务器，所以「分享」= 把这段文字发过去。
+   前缀 GP1 是版本号：以后方案结构变了，老码能认出来并给一句人话。 */
+function presetToCode(preset){
+  const json = JSON.stringify({ g: preset.gameId, n: preset.name, d: preset.data });
+  return 'GP1' + b64urlEncode(new TextEncoder().encode(json));
+}
+function presetFromCode(text){
+  const t = String(text || '').trim().replace(/\s+/g, '');
+  if (!t) return null;
+  if (!t.startsWith('GP1')) return null;      // 只认自己这一版，别猜
+  const body = t.slice(3);
+  let obj;
+  try { obj = JSON.parse(new TextDecoder().decode(b64urlDecode(body))); }
+  catch { return null; }
+  if (!obj || typeof obj.g !== 'string' || !pluginById(obj.g)) return null;
+  if (!obj.d || typeof obj.d !== 'object' || Array.isArray(obj.d)) return null;
+  return {
+    // id 由码本身推出来：同一段码导入两次是同一个方案，不会存成两份
+    id: 'shared:' + body.slice(0, 20),
+    gameId: obj.g,
+    name: String(obj.n || '别人分享的方案').slice(0, 40),
+    note: '来自分享码',
+    data: obj.d,
+    official: false,
+  };
+}
+
+/* ---------- 传输抽象 ----------
+   Phase 0 用 LocalTransport（同页回环，开发与测试的脚手架）。
+   Phase 1 接 WebRtcTransport —— RoomController 一行都不用改。 */
+class Transport {
+  constructor(){ this._handlers = []; this._peerFns = []; }
+  onMessage(fn){ this._handlers.push(fn); return () => { this._handlers = this._handlers.filter(h=>h!==fn); }; }
+  /** 对端的连接活了/没了。**只报这个事实**，它意味着什么由房间层自己判断 ——
+      传输层不该知道「成员」「掉线」这些词。单机不会有人掉线，所以默认是空的。 */
+  onPeerState(fn){ this._peerFns.push(fn); return () => { this._peerFns = this._peerFns.filter(f=>f!==fn); }; }
+  _peerState(peerId, ok){ for (const fn of this._peerFns) fn(peerId, ok); }
+  /** from 是对端 id；本机自发或单机回环时为 null */
+  _emit(msg, from){ for (const h of this._handlers) h(msg, from); }
+  send(_msg, _to){ throw new Error('not implemented'); }
+  close(){}
+  get kind(){ return 'abstract'; }
+  /** 当前连着的对端 id。单机时为空 —— 房间逻辑据此判断要不要广播。 */
+  get peerIds(){ return []; }
+}
+
+/** 同页回环：不碰网络，让整套房间逻辑单独可跑。单机模式与测试都走它。 */
+class LocalTransport extends Transport {
+  constructor(){ super(); this.peers = new Set(); }
+  send(_msg, _to){ return true; }
+  link(other){ this.peers.add(other); other.peers.add(this); }
+  get kind(){ return 'local'; }
+}
+
+/* ---------- 权益抽象 ----------
+   联机核心只依赖这个接口，不依赖任何具体实现。
+   早期注入全解锁；将来上线会员制时，RoomController 一行都不用改。 */
+const CAP = { ROOM_CREATE:'room.create', ROOM_JOIN:'room.join', PRESET_SHARE:'preset.share' };
+const AllUnlockedEntitlement = { can: () => true, describe: () => '全部功能已解锁' };
+
+/* ---------- 房间控制器：状态机 + 协议引擎 ----------
+   全 App 唯一持有 transport 的地方。它不知道底下是本地回环还是 WebRTC。 */
+class RoomController {
+  constructor({ transport, entitlement = AllUnlockedEntitlement } = {}){
+    this.transport = transport || new LocalTransport();
+    this.entitlement = entitlement;
+    this.room = null;
+    this.me = null;
+    this._subs = [];
+    this._mode = 'solo';            // solo | host | client
+    this._memberOfPeer = new Map(); // peerId -> memberId（房主侧）
+    this._peerOfMember = new Map(); // memberId -> peerId（房主侧）
+    this._remoteView = null;        // 加入端：只持有房主推过来的那一份切片
+    this._joinResolve = null;
+    this._bindTransport(this.transport);
+  }
+  /** 把房间接到一条传输上。onPeerState 对单机的 LocalTransport 永远不会响
+      （没人和你联网，也就没人掉线），所以接不接都一样 —— 接了更省心。 */
+  _bindTransport(t){
+    t.onMessage((msg, from) => this._onMessage(msg, from));
+    t.onPeerState((peerId, ok) => {
+      const memberId = this._memberOfPeer.get(peerId);
+      if (memberId) this.setConnected(memberId, ok);
+    });
+  }
+  get mode(){ return this._mode; }
+  subscribe(fn){ this._subs.push(fn); return () => { this._subs = this._subs.filter(f=>f!==fn); }; }
+  _notify(){ for (const f of this._subs) f(this); }
+
+  /* ---- 生命周期 ---- */
+  createRoom(hostName, { seed } = {}){
+    if (!this.entitlement.can(CAP.ROOM_CREATE)) throw new Error('当前权益不能创建房间');
+    this.room = makeRoom({ hostName, seed });
+    this.me = this.room.members[0];
+    this._mode = 'host';
+    this._notify();
+    return this.room;
+  }
+  joinRoom(room, name){
+    if (!this.entitlement.can(CAP.ROOM_JOIN)) throw new Error('当前权益不能加入房间');
+    const m = makeMember({ name });
+    room.members.push(m);
+    this.room = room;
+    this.me = m;
+    this._mode = 'solo';        // 本机直接共用同一个房间对象，不走网络
+    this._notify();
+    return m;
+  }
+  /** 断线重连：凭 token 认领原身份，不改变成员列表，不用重新配对。 */
+  resume(token){
+    const m = this.room && this.room.members.find(x => x.token === token);
+    if (!m) return false;
+    m.connected = true;
+    this.me = m;
+    this._notify();
+    return true;
+  }
+  get isHost(){ return !!this.room && !!this.me && this.room.hostId === this.me.id; }
+  /** 分享方案是个权益点。注意：**用**别人分享来的方案永远不受限，
+      只有「分享出去」才可能被拦 —— 拦收的人只会让方案传不开。 */
+  canSharePreset(){ return this.entitlement.can(CAP.PRESET_SHARE); }
+  get plugin(){ return this.room && this.room.currentGameId ? pluginById(this.room.currentGameId) : null; }
+
+  /* ---- 游戏生命周期 ---- */
+  canStart(gameId){
+    const p = pluginById(gameId);
+    if (!p || !this.room) return false;
+    const n = this.room.members.length;
+    return n >= p.minPlayers && (p.maxPlayers < 0 || n <= p.maxPlayers);
+  }
+  startGame(gameId, { preset } = {}){
+    this._requireHost('开始游戏');
+    const p = pluginById(gameId);
+    if (!p) throw new Error('未知游戏 ' + gameId);
+    if (!this.canStart(gameId)) throw new Error(`${p.name} 需要 ${p.minPlayers} 人以上`);
+    const state = p.createInitialState({ members: this.room.members, preset, seed: this.room.seed });
+    this.room.seed = nextSeed(this.room.seed);
+    this.room.currentGameId = gameId;
+    // preset 留着，「另存为」要拿它当当前配置
+    this.room.mounted = { gameId, state, preset: preset || null };
+    this.room.phase = 'playing';
+    this._pushAll();
+    this._notify();
+    return state;
+  }
+  /** 切换游戏：成员列表与记分牌原封不动，只换挂载的插件。
+      旧局面存进历史，不占内存但可回放。 */
+  switchGame(gameId, opts){
+    if (this.room.mounted){
+      this.room.history.push({
+        gameId: this.room.mounted.gameId,
+        endedAt: Date.now(),
+        summary: summarize(this.room.mounted),
+      });
+    }
+    return this.startGame(gameId, opts);
+  }
+  endGame(){
+    this._requireHost('结束游戏');
+    if (this.room.mounted){
+      this.room.history.push({
+        gameId: this.room.mounted.gameId,
+        endedAt: Date.now(),
+        summary: summarize(this.room.mounted),
+      });
+    }
+    this.room.mounted = null;
+    this.room.currentGameId = null;
+    this.room.phase = 'lobby';
+    this._pushAll();
+    this._notify();
+  }
+
+  /* ---- 掉线 ----
+     传输层只报事实（「这条连接没了」），要不要因此改变局面由房间说了算。
+     connected 本来就在 snapshot() 里，所以房主改完推一次，其他人就知道了。 */
+  setConnected(memberId, ok){
+    if (!this.room) return false;
+    const m = this.room.members.find(x => x.id === memberId);
+    if (!m || !!m.connected === !!ok) return false;
+    m.connected = !!ok;
+    this._pushAll();
+    this._notify();
+    return true;
+  }
+
+  /* ---- 动作分发：host 权威 ---- */
+  submit(action){
+    // 加入端不持有权威状态，动作发给房主去裁决
+    if (this._mode === 'client'){
+      this.transport.send({ t:'action', action });
+      return true;
+    }
+    const ok = this._applyAction(this.me.id, action);
+    if (ok) this._pushAll();
+    return ok;
+  }
+  /** 本机以某个成员的身份动作（测试、单机、房主代管）。 */
+  applyAs(actorId, action){
+    const ok = this._applyAction(actorId, action);
+    if (ok) this._pushAll();
+    return ok;
+  }
+  _applyAction(actorId, action){
+    const { room } = this;
+    if (!room || !room.mounted) return false;
+    const p = pluginById(room.mounted.gameId);
+    if (!p) return false;
+
+    /* 「跳过」是房主的权柄，不是玩家的动作 —— 所以它不走插件的 canApply，
+       而是直接问插件「这个人现在卡住了什么」。ⓘ 加入端提交的动作是以**它自己
+       的 id** 裁决的（见 _onHostMessage 里的 this._applyAction(memberId, ...)），
+       所以加入端点这个动作天然过不了 hostId 这一关，不必额外加校验。 */
+    if (action.t === 'skipPlayer'){
+      if (actorId !== room.hostId) return false;
+      if (typeof p.skip !== 'function') return false;
+      const next = p.skip(room.mounted.state, action.id);
+      if (!next) return false;              // 这人没卡住什么，就当没发生
+      room.mounted.state = next;
+      this._notify();
+      return true;
+    }
+
+    if (!p.canApply(room.mounted.state, actorId, action)) return false;
+    room.mounted.state = p.reduce(room.mounted.state, { ...action, by: actorId });
+    this._notify();
+    return true;
+  }
+
+  /* ---- ★ 视图投影：本端拿到的永远只是切片，不是权威状态 ---- */
+  viewFor(viewerId){
+    // 加入端拿不到权威状态，手上只有房主推过来的那一份切片
+    if (this._mode === 'client') return this._remoteView;
+    const { room } = this;
+    if (!room || !room.mounted) return null;
+    const p = pluginById(room.mounted.gameId);
+    return p.viewFor(room.mounted.state, viewerId);
+  }
+  get myView(){ return this.viewFor(this.me.id); }
+
+  /* ---- 记分牌：属于房间，不属于游戏 ---- */
+  addScore(memberId, delta){
+    if (!this.room || this._mode === 'client') return;
+    this.room.scores[memberId] = (this.room.scores[memberId] || 0) + delta;
+    this._pushAll();
+    this._notify();
+  }
+  resetScores(){
+    if (!this.room || this._mode === 'client') return;
+    this.room.scores = {};
+    this._pushAll();
+    this._notify();
+  }
+
+  /* ================= 联机 ================= */
+
+  _requireHost(what){
+    if (this._mode === 'client') throw new Error(`${what}只能由房主操作`);
+  }
+
+  /** 对外广播的房间快照：只含成员、分数、当前游戏这些人人可见的东西。 */
+  snapshot(){
+    const r = this.room;
+    if (!r) return null;
+    return {
+      roomId: r.roomId, hostId: r.hostId, phase: r.phase,
+      members: r.members.map(m => ({ id:m.id, name:m.name, isHost:m.isHost, connected:m.connected })),
+      scores: { ...r.scores },
+      currentGameId: r.currentGameId,
+      history: r.history.slice(),
+    };
+  }
+
+  /** ★ 房主把快照 + 每个对端「各自的」视图推出去。
+      隐藏信息唯一会经过的地方就是这里 —— 视图是按人裁的。 */
+  _pushAll(){
+    if (this._mode !== 'host' || !this.room) return;
+    const snap = this.snapshot();
+    for (const peerId of this.transport.peerIds){
+      const memberId = this._memberOfPeer.get(peerId);
+      if (!memberId) continue;
+      this.transport.send({ t:'snapshot', snapshot: snap }, peerId);
+      this.transport.send({ t:'view', view: this._viewForMember(memberId) }, peerId);
+    }
+  }
+  _viewForMember(memberId){
+    const { room } = this;
+    if (!room || !room.mounted) return null;
+    return pluginById(room.mounted.gameId).viewFor(room.mounted.state, memberId);
+  }
+
+  /** 以加入端身份连上房主。resolve 时已经拿到自己的身份和房间快照。 */
+  joinAsClient(transport, name){
+    if (transport && transport !== this.transport){
+      this.transport = transport;
+      this._bindTransport(transport);
+    }
+    this._mode = 'client';
+    const ready = new Promise(resolve => { this._joinResolve = resolve; });
+    this.transport.send({ t:'join', name });
+    return ready;
+  }
+
+  _applySnapshot(s){
+    if (!s) return;
+    if (!this.room){
+      this.room = { roomId:s.roomId, hostId:s.hostId, members:[], scores:{},
+                    history:[], currentGameId:null, mounted:null, phase:s.phase, seed:0 };
+    }
+    this.room.roomId = s.roomId;
+    this.room.hostId = s.hostId;
+    this.room.phase = s.phase;
+    // 加入端只镜像名单，不持有别人的 token
+    this.room.members = s.members.map(m => ({ ...m }));
+    this.room.scores = { ...s.scores };
+    this.room.currentGameId = s.currentGameId;
+    this.room.history = s.history.slice();
+  }
+
+  /* ---- 协议入口 ---- */
+  _onMessage(msg, from){
+    if (this._mode === 'host') this._onHostMessage(msg, from);
+    else if (this._mode === 'client') this._onClientMessage(msg);
+  }
+
+  _onHostMessage(msg, from){
+    switch (msg.t){
+      case 'join': {
+        if (!this.room || this._memberOfPeer.has(from)) return;
+        const m = makeMember({ name: msg.name });
+        this.room.members.push(m);
+        this._memberOfPeer.set(from, m.id);
+        this._peerOfMember.set(m.id, from);
+        this.transport.send({
+          t: 'welcome',
+          you: { id:m.id, name:m.name, token:m.token },
+          snapshot: this.snapshot(),
+        }, from);
+        this._pushAll();
+        this._notify();
+        break;
+      }
+      case 'action': {
+        const memberId = this._memberOfPeer.get(from);
+        if (!memberId) return;
+        if (this._applyAction(memberId, msg.action)) this._pushAll();
+        break;
+      }
+    }
+  }
+
+  _onClientMessage(msg){
+    switch (msg.t){
+      case 'welcome':
+        this.me = { ...msg.you, isHost:false, connected:true };
+        this._applySnapshot(msg.snapshot);
+        if (this._joinResolve){ this._joinResolve(this.me); this._joinResolve = null; }
+        break;
+      case 'snapshot':
+        this._applySnapshot(msg.snapshot);
+        break;
+      case 'view':
+        this._remoteView = msg.view;
+        break;
+    }
+    this._notify();
+  }
+}
+
+/** 历史摘要：只存能显示的一点点，不留全量状态。
+    摘要归插件自己写 —— 否则这里会变成一个随游戏数量增长的 switch，
+    「加一款游戏只改一处」就破了。 */
+function summarize(session){
+  const p = pluginById(session.gameId);
+  return (p && typeof p.summarize === 'function') ? (p.summarize(session.state) || '') : '';
+}
+
+/* ---------- 工具 ---------- */
+function esc(s){
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function initials(name){ return String(name||'?').trim().slice(0,1) || '?'; }
+
+/* ---------- 信令打包 ----------
+   SDP 极其啰嗦（大段重复的属性名），deflate 之后能压掉六七成。
+   整包塞进 URL 的 # 片段里 —— 片段不会被浏览器发往服务器，
+   所以哪怕页面托管在公网，信令数据也只在两台设备之间流转。 */
+const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+function b64urlEncode(bytes){
+  let out = '';
+  const n = bytes.length;
+  for (let i = 0; i < n; i += 3){
+    const rem = n - i;
+    const b0 = bytes[i];
+    const b1 = rem > 1 ? bytes[i+1] : 0;
+    const b2 = rem > 2 ? bytes[i+2] : 0;
+    out += B64URL[b0 >> 2];
+    out += B64URL[((b0 & 3) << 4) | (b1 >> 4)];
+    if (rem > 1) out += B64URL[((b1 & 15) << 2) | (b2 >> 6)];
+    if (rem > 2) out += B64URL[b2 & 63];
+  }
+  return out;
+}
+function b64urlDecode(str){
+  const bytes = [];
+  for (let i = 0; i < str.length; i += 4){
+    const rem = str.length - i;
+    const c0 = B64URL.indexOf(str[i]);
+    const c1 = rem > 1 ? B64URL.indexOf(str[i+1]) : 0;
+    const c2 = rem > 2 ? B64URL.indexOf(str[i+2]) : 0;
+    const c3 = rem > 3 ? B64URL.indexOf(str[i+3]) : 0;
+    bytes.push((c0 << 2) | (c1 >> 4));
+    if (rem > 2) bytes.push(((c1 & 15) << 4) | (c2 >> 2));
+    if (rem > 3) bytes.push(((c2 & 3) << 6) | c3);
+  }
+  return new Uint8Array(bytes);
+}
+
+/** 扫进来的东西读不出来时，给一句人话 */
+function badSignal(){
+  return new Error('这段邀请码读不出来 —— 可能扫错了码，或者链接被截断了一截');
+}
+
+/** 'z' = deflate 压过；'r' = 裸数据（浏览器不支持 CompressionStream 时的退路） */
+async function packSignal(obj){
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  if (typeof CompressionStream === 'function'){
+    try {
+      const cs = new CompressionStream('deflate-raw');
+      // 先挂上读，避免背压死锁。读取端必须自己接住拒绝 ——
+      // 否则压缩流一出错，这里就多一条未处理的 rejection。
+      const done = new Response(cs.readable).arrayBuffer().catch(() => null);
+      const w = cs.writable.getWriter();
+      await w.write(bytes);
+      await w.close();
+      const buf = await done;
+      if (buf) return 'z' + b64urlEncode(new Uint8Array(buf));
+    } catch { /* 压不动就退回不压，功能不受影响 */ }
+  }
+  return 'r' + b64urlEncode(bytes);
+}
+
+async function unpackSignal(str){
+  const tag = String(str || '').slice(0, 1);
+  const bytes = b64urlDecode(String(str || '').slice(1));
+
+  if (tag === 'r'){
+    try { return JSON.parse(new TextDecoder().decode(bytes)); }
+    catch { throw badSignal(); }
+  }
+  if (tag !== 'z' || typeof DecompressionStream !== 'function') throw badSignal();
+
+  let done;
+  try {
+    const ds = new DecompressionStream('deflate-raw');
+    // 同上：读取端单独接住拒绝，让错误从下面那条路统一抛出
+    done = new Response(ds.readable).arrayBuffer().catch(() => null);
+    const w = ds.writable.getWriter();
+    await w.write(bytes);
+    await w.close();
+  } catch { throw badSignal(); }
+
+  const buf = await done;
+  if (!buf) throw badSignal();
+  try { return JSON.parse(new TextDecoder().decode(new Uint8Array(buf))); }
+  catch { throw badSignal(); }
+}
+
+/** 信令放在 # 里，不进服务器 */
+function signalUrl(base, kind, packed){ return `${base}#${kind}=${packed}`; }
+function readSignalFromHash(hash){
+  const m = String(hash || '').match(/^#(o|a)=(.+)$/);
+  return m ? { kind: m[1], payload: m[2] } : null;
+}
+
+// 供 Node 测试取用；浏览器里忽略
+const GP = {
+  RHYTHM, RHYTHM_ORDER, GamePlugin, GAME_PLUGINS, pluginById,
+  dicePlugin, wheelPlugin, undercoverPlugin, UNDERCOVER_PAIRS, spyCountFor,
+  gachaPlugin, scoreboardPlugin, gomokuPlugin, chessPlugin, xiangqiPlugin,
+  GACHA_POOL_DEFAULT, gomokuWinAt, chessParse, chessLegal, chessAdvance, chessInCheck,
+  chessAllLegal, chessMoves, chessMake, chessAttacked, chessName,
+  xqParse, xqLegal, xqAdvance, xqInCheck, xqAllLegal,
+  xqMoves, xqMake, xqAttacked, xqName, xqFacing, xqGen, XQ_COLS, XQ_ROWS,
+  werewolfPlugin, wwAutoLineup, wwLineup, wwDeal, wwWinner, wwTally, wwTopVote,
+  WW_ROLE_NAME, WW_ROLE_DESC, WW_STEP_LABEL,
+  drawguessPlugin, DRAW_WORDS, DG_COLORS, dgNormalize, dgPaint, dgClamp01,
+  Transport, LocalTransport, RoomController, AllUnlockedEntitlement, CAP,
+  makeMember, makeRoom, esc, initials, draw, drawWeighted, shuffleWith, nextSeed,
+  lines, summarize,
+  builtinPresets, presetsFor, isPreset, loadMyPresets, saveMyPresets,
+  presetToCode, presetFromCode, PRESET_KEY, memoryStore, presetStore,
+  packSignal, unpackSignal, b64urlEncode, b64urlDecode, readSignalFromHash, signalUrl,
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = GP;
+// ==== CORE:END ====
+</script>
+
+<!-- ==========================================================================
+     二维码编码器（零依赖，浏览器与 Node 都能跑）
+     只需要「编码」：读码交给手机系统相机 —— 系统相机不受页面安全上下文限制。
+     ========================================================================== -->
+<script id="gatherpop-qr">
+// ==== QR:BEGIN ====
+const QRCode = (function(){
+'use strict';
+
+/* ---------- GF(256)，本原多项式 0x11D ---------- */
+const EXP = new Uint8Array(512);
+const LOG = new Uint8Array(256);
+(function(){
+  let x = 1;
+  for (let i = 0; i < 255; i++){
+    EXP[i] = x;
+    LOG[x] = i;
+    x = (x << 1) ^ ((x & 0x80) ? 0x11D : 0);
+  }
+  for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+})();
+const gfMul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+
+/* ---------- 里德-所罗门 ---------- */
+const genCache = {};
+function rsGenPoly(n){
+  if (genCache[n]) return genCache[n];
+  let p = [1];                                  // 常数项在前
+  for (let i = 0; i < n; i++){
+    const q = new Array(p.length + 1).fill(0);
+    for (let j = 0; j < p.length; j++){
+      q[j + 1] ^= p[j];
+      q[j] ^= gfMul(p[j], EXP[i]);
+    }
+    p = q;
+  }
+  return (genCache[n] = p.reverse());           // 最高次在前，首项为 1
+}
+function rsEncode(data, ecLen){
+  const gen = rsGenPoly(ecLen);
+  const res = new Uint8Array(ecLen);
+  for (const d of data){
+    const factor = d ^ res[0];
+    res.copyWithin(0, 1);
+    res[ecLen - 1] = 0;
+    for (let i = 0; i < ecLen; i++) res[i] ^= gfMul(gen[i + 1], factor);
+  }
+  return res;
+}
+
+/* ---------- 标准表 ---------- */
+const TOTAL_CODEWORDS = [0,
+  26,44,70,100,134,172,196,242,292,346,
+  404,466,532,581,655,733,815,901,991,1085,
+  1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,
+  2323,2465,2611,2761,2876,3034,3196,3362,3532,3706];
+
+/* 每档纠错级别：[每块纠错码字数, 第1组块数, 第2组块数] */
+const RS_BLOCKS = {
+  L: [null,
+    [7,1,0],[10,1,0],[15,1,0],[20,1,0],[26,1,0],[18,2,0],[20,2,0],[24,2,0],[30,2,0],[18,2,2],
+    [20,4,0],[24,2,2],[26,4,0],[30,3,1],[22,5,1],[24,5,1],[28,1,5],[30,5,1],[28,3,4],[28,3,5],
+    [28,4,4],[28,2,7],[30,4,5],[30,6,4],[26,8,4],[28,10,2],[30,8,4],[30,3,10],[30,7,7],[30,5,10],
+    [30,13,3],[30,17,0],[30,17,1],[30,13,6],[30,12,7],[30,6,14],[30,17,4],[30,4,18],[30,20,4],[30,19,6]],
+  M: [null,
+    [10,1,0],[16,1,0],[26,1,0],[18,2,0],[24,2,0],[16,4,0],[18,4,0],[22,2,2],[22,3,2],[26,4,1],
+    [30,1,4],[22,6,2],[22,8,1],[24,4,5],[24,5,5],[28,7,3],[28,10,1],[26,9,4],[26,3,11],[26,3,13],
+    [26,17,0],[28,17,0],[28,4,14],[28,6,14],[28,8,13],[28,19,4],[28,22,3],[28,3,23],[28,21,7],[28,19,10],
+    [28,2,29],[28,10,23],[28,14,21],[28,14,23],[28,12,26],[28,6,34],[28,29,14],[28,13,32],[28,40,7],[28,18,31]],
+};
+
+const ALIGN = [null,
+  [],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],
+  [6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],
+  [6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],
+  [6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]];
+
+const EC_BITS = { L:1, M:0, Q:3, H:2 };
+
+/* ---------- 容量与分块 ---------- */
+function blockInfo(version, level){
+  const [ecPerBlock, b1, b2] = RS_BLOCKS[level][version];
+  const totalBlocks = b1 + b2;
+  const totalData = TOTAL_CODEWORDS[version] - ecPerBlock * totalBlocks;
+  const d1 = Math.floor(totalData / totalBlocks);
+  return { ecPerBlock, b1, b2, d1, d2: d1 + 1, totalData };
+}
+function charCountBits(version){ return version < 10 ? 8 : 16; }
+function dataCapacityBytes(version, level){
+  const bi = blockInfo(version, level);
+  return Math.floor((bi.totalData * 8 - 4 - charCountBits(version)) / 8);
+}
+
+/* ---------- 比特流 → 码字 ---------- */
+function buildCodewords(bytes, version, level){
+  const bi = blockInfo(version, level);
+  const capBits = bi.totalData * 8;
+  const bits = [];
+  const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+
+  push(0b0100, 4);                                  // 字节模式
+  push(bytes.length, charCountBits(version));
+  for (const b of bytes) push(b, 8);
+  for (let i = 0; i < 4 && bits.length < capBits; i++) bits.push(0);   // 终止符
+  while (bits.length % 8 !== 0) bits.push(0);
+
+  const dataCw = [];
+  for (let i = 0; i < bits.length; i += 8){
+    let v = 0;
+    for (let j = 0; j < 8; j++) v = (v << 1) | bits[i + j];
+    dataCw.push(v);
+  }
+  const PAD = [0xEC, 0x11];
+  for (let i = 0; dataCw.length < bi.totalData; i++) dataCw.push(PAD[i % 2]);
+
+  const blocks = [];
+  let off = 0;
+  for (let i = 0; i < bi.b1; i++){ blocks.push(dataCw.slice(off, off + bi.d1)); off += bi.d1; }
+  for (let i = 0; i < bi.b2; i++){ blocks.push(dataCw.slice(off, off + bi.d2)); off += bi.d2; }
+
+  const ecBlocks = blocks.map(b => rsEncode(b, bi.ecPerBlock));
+
+  const out = [];
+  const maxData = bi.b2 ? bi.d2 : bi.d1;
+  for (let i = 0; i < maxData; i++){
+    for (const b of blocks) if (i < b.length) out.push(b[i]);
+  }
+  for (let i = 0; i < bi.ecPerBlock; i++){
+    for (const e of ecBlocks) out.push(e[i]);
+  }
+  return out;
+}
+
+/* ---------- 格式信息 / 版本信息（BCH） ---------- */
+function formatBits(level, mask){
+  const data = (EC_BITS[level] << 3) | mask;
+  let rem = data;
+  for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+  return ((data << 10) | (rem & 0x3FF)) ^ 0x5412;
+}
+function versionBits(version){
+  let rem = version;
+  for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1F25);
+  return (version << 12) | (rem & 0xFFF);
+}
+
+/* ---------- 掩码 ---------- */
+const MASKS = [
+  (r, c) => (r + c) % 2 === 0,
+  (r, c) => r % 2 === 0,
+  (r, c) => c % 3 === 0,
+  (r, c) => (r + c) % 3 === 0,
+  (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+  (r, c) => (r * c) % 2 + (r * c) % 3 === 0,
+  (r, c) => ((r * c) % 2 + (r * c) % 3) % 2 === 0,
+  (r, c) => ((r + c) % 2 + (r * c) % 3) % 2 === 0,
+];
+
+/** 掩码罚分：四条标准规则，分越低越好 */
+function penalty(m, size){
+  let score = 0;
+  // 规则 1：同色连续 5 个以上
+  for (let i = 0; i < size; i++){
+    for (const horiz of [true, false]){
+      let run = 1;
+      for (let j = 1; j < size; j++){
+        const cur  = horiz ? m[i][j] : m[j][i];
+        const prev = horiz ? m[i][j - 1] : m[j - 1][i];
+        if (cur === prev) run++;
+        else { if (run >= 5) score += 3 + (run - 5); run = 1; }
+      }
+      if (run >= 5) score += 3 + (run - 5);
+    }
+  }
+  // 规则 2：2×2 同色块
+  for (let r = 0; r < size - 1; r++){
+    for (let c = 0; c < size - 1; c++){
+      const v = m[r][c];
+      if (v === m[r][c + 1] && v === m[r + 1][c] && v === m[r + 1][c + 1]) score += 3;
+    }
+  }
+  // 规则 3：形如 10111010000 / 00001011101
+  const P1 = [1,0,1,1,1,0,1,0,0,0,0];
+  const P2 = [0,0,0,0,1,0,1,1,1,0,1];
+  const match = (get, i, pat) => { for (let k = 0; k < 11; k++) if (get(i + k) !== pat[k]) return false; return true; };
+  for (let i = 0; i < size; i++){
+    for (const horiz of [true, false]){
+      const get = horiz ? (j) => m[i][j] : (j) => m[j][i];
+      for (let j = 0; j + 11 <= size; j++){
+        if (match(get, j, P1) || match(get, j, P2)) score += 40;
+      }
+    }
+  }
+  // 规则 4：黑白比例偏离 50%
+  let dark = 0;
+  for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (m[r][c]) dark++;
+  const pct = dark * 100 / (size * size);
+  score += Math.floor(Math.abs(pct - 50) / 5) * 10;
+  return score;
+}
+
+/* ---------- 把码字铺成矩阵 ---------- */
+function buildMatrix(version, level, mask, codewords){
+  const size = version * 4 + 17;
+  const m  = Array.from({ length: size }, () => new Array(size).fill(0));
+  const fn = Array.from({ length: size }, () => new Array(size).fill(false));
+  const set = (r, c, v) => { m[r][c] = v; fn[r][c] = true; };
+
+  // 定位图案 + 分隔带
+  const finder = (r0, c0) => {
+    for (let r = -1; r <= 7; r++){
+      for (let c = -1; c <= 7; c++){
+        const rr = r0 + r, cc = c0 + c;
+        if (rr < 0 || rr >= size || cc < 0 || cc >= size) continue;
+        const ring = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+                     (c >= 0 && c <= 6 && (r === 0 || r === 6));
+        const core = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+        set(rr, cc, (ring || core) ? 1 : 0);
+      }
+    }
+  };
+  finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+
+  // 定时图案
+  for (let i = 8; i < size - 8; i++){
+    set(6, i, i % 2 === 0 ? 1 : 0);
+    set(i, 6, i % 2 === 0 ? 1 : 0);
+  }
+
+  // 校正图案（只跳过与三个定位图案重合的那些）
+  const centers = ALIGN[version];
+  for (const r of centers){
+    for (const c of centers){
+      const onFinder = (r === 6 && c === 6) ||
+                       (r === 6 && c === size - 7) ||
+                       (r === size - 7 && c === 6);
+      if (onFinder) continue;
+      for (let dr = -2; dr <= 2; dr++){
+        for (let dc = -2; dc <= 2; dc++){
+          const ring = Math.max(Math.abs(dr), Math.abs(dc));
+          set(r + dr, c + dc, (ring === 2 || ring === 0) ? 1 : 0);
+        }
+      }
+    }
+  }
+
+  // 版本信息（7 及以上）
+  if (version >= 7){
+    const vb = versionBits(version);
+    for (let i = 0; i < 18; i++){
+      const bit = (vb >> i) & 1;
+      const r = Math.floor(i / 3), c = i % 3;
+      set(r, size - 11 + c, bit);
+      set(size - 11 + c, r, bit);
+    }
+  }
+
+  // 预留格式信息区。注意跳过第 6 行 / 第 6 列 —— 那两格是定时图案，不属于格式信息
+  const reserve = (r, c) => { m[r][c] = 0; fn[r][c] = true; };
+  for (let i = 0; i < 9; i++){
+    if (i !== 6) reserve(8, i);
+    if (i !== 6) reserve(i, 8);
+  }
+  for (let i = 0; i < 8; i++){ reserve(8, size - 1 - i); reserve(size - 1 - i, 8); }
+
+  // 数据按之字形铺进去
+  const dataBits = [];
+  for (const cw of codewords) for (let i = 7; i >= 0; i--) dataBits.push((cw >> i) & 1);
+
+  let idx = 0, row = size - 1, dir = -1;
+  for (let col = size - 1; col > 0; col -= 2){
+    if (col === 6) col--;                                  // 跳过竖直定时列
+    for (; row >= 0 && row < size; row += dir){
+      for (let k = 0; k < 2; k++){
+        const cc = col - k;
+        if (fn[row][cc]) continue;
+        const bit = idx < dataBits.length ? dataBits[idx] : 0;
+        idx++;
+        m[row][cc] = MASKS[mask](row, cc) ? (bit ^ 1) : bit;
+      }
+    }
+    dir = -dir;
+    row += dir;
+  }
+
+  // 格式信息最后放，避免被掩码动到。
+  // 两个副本：第一副本走第 8 列（低位在上），第二副本走第 8 行（低位在右）。
+  const fmt = formatBits(level, mask);
+  for (let i = 0; i < 15; i++){
+    const bit = (fmt >> i) & 1;
+
+    if (i < 6) m[i][8] = bit;                              // (0,8)…(5,8)
+    else if (i < 8) m[i + 1][8] = bit;                     // 跳过定时格 (6,8)
+    else m[size - 15 + i][8] = bit;                        // (size-7,8)…(size-1,8)
+
+    if (i < 8) m[8][size - 1 - i] = bit;                   // (8,size-1)…(8,size-8)
+    else if (i < 9) m[8][7] = bit;                         // 跳过定时格 (8,6)
+    else m[8][14 - i] = bit;                               // (8,5)…(8,0)
+  }
+  m[size - 8][8] = 1;                                      // 固定黑点
+
+  return m;
+}
+
+/* ---------- 对外 ---------- */
+function encode(text, { level = 'M', mask = null } = {}){
+  const bytes = new TextEncoder().encode(text);
+  let version = -1, useLevel = level;
+
+  for (let v = 1; v <= 40; v++){
+    if (bytes.length <= dataCapacityBytes(v, useLevel)){ version = v; break; }
+  }
+  if (version < 0 && useLevel !== 'L'){
+    // M 档装不下就退到 L 再试一次
+    useLevel = 'L';
+    for (let v = 1; v <= 40; v++){
+      if (bytes.length <= dataCapacityBytes(v, useLevel)){ version = v; break; }
+    }
+  }
+  if (version < 0) throw new Error('内容太长，塞不进一个二维码');
+
+  const codewords = buildCodewords(bytes, version, useLevel);
+
+  // 指定了掩码就直接用（测试里要逐个掩码比对），否则按罚分挑最好那个
+  if (mask !== null){
+    const m = buildMatrix(version, useLevel, mask, codewords);
+    return { version, level: useLevel, mask, size: m.length, modules: m };
+  }
+
+  let best = null;
+  for (let k = 0; k < 8; k++){
+    const m = buildMatrix(version, useLevel, k, codewords);
+    const p = penalty(m, m.length);
+    if (!best || p < best.p) best = { mask: k, m, p };
+  }
+  return { version, level: useLevel, mask: best.mask, size: best.m.length, modules: best.m };
+}
+
+/** 渲染成 SVG。纯字符串，不碰 DOM，所以也能在 Node 里测。 */
+function toSvg(qr, { scale = 4, margin = 4, dark = '#12101a', light = '#ffffff' } = {}){
+  const n = qr.size;
+  const dim = (n + margin * 2) * scale;
+  let path = '';
+  for (let r = 0; r < n; r++){
+    for (let c = 0; c < n; c++){
+      if (qr.modules[r][c]) path += `M${(c + margin) * scale} ${(r + margin) * scale}h${scale}v${scale}h${-scale}z`;
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${dim}" height="${dim}" viewBox="0 0 ${dim} ${dim}" shape-rendering="crispEdges">` +
+         `<rect width="${dim}" height="${dim}" fill="${light}"/>` +
+         `<path d="${path}" fill="${dark}"/></svg>`;
+}
+
+/** 渲染成 RGBA 像素，供解码器读取（测试用） */
+function toRGBA(qr, { scale = 4, margin = 4 } = {}){
+  const n = qr.size;
+  const dim = (n + margin * 2) * scale;
+  const data = new Uint8ClampedArray(dim * dim * 4).fill(255);
+  for (let r = 0; r < n; r++){
+    for (let c = 0; c < n; c++){
+      if (!qr.modules[r][c]) continue;
+      for (let dy = 0; dy < scale; dy++){
+        for (let dx = 0; dx < scale; dx++){
+          const y = (r + margin) * scale + dy;
+          const x = (c + margin) * scale + dx;
+          const o = (y * dim + x) * 4;
+          data[o] = data[o + 1] = data[o + 2] = 0;
+          data[o + 3] = 255;
+        }
+      }
+    }
+  }
+  return { data, width: dim, height: dim };
+}
+
+return { encode, toSvg, toRGBA, dataCapacityBytes, blockInfo,
+         _internal: { rsEncode, rsGenPoly, formatBits, versionBits, buildMatrix, penalty } };
+})();
+// ==== QR:END ====
+</script>
+
+<!-- ==========================================================================
+     WebRTC 传输（只在浏览器里跑，所以放在 CORE 标记之外 —— Node 里没有 RTCPeerConnection）
+
+     三个刻意的取舍：
+
+     1. 不做 trickle ICE。等候选收集完，把完整 SDP 一把塞进二维码。
+        代价是收集期间多等一两秒，换来的是「每个方向只需要一个二维码」，
+        不用为候选再来回传好几轮。
+
+     2. 全程不调用 getUserMedia。扫码用手机系统相机 —— 系统相机不受页面安全
+        上下文限制，所以这个页面**不需要任何相机权限**，也就没有 HTTPS 硬要求。
+
+     3. 房主扫到的回执进的是一个新标签页，而新标签页和原页面同源。
+        它通过 BroadcastChannel 把回执转回原页面 —— 原页面里那个发出 offer 的
+        RTCPeerConnection 因此原地存活，握手才能完成，页面全程不刷新。
+     ========================================================================== -->
+<script id="gatherpop-net">
+// ==== NET:BEGIN ====
+/** 等 ICE 候选收集完。收集不到也不干等，超时就用手上已有的。 */
+function waitForIce(pc, timeoutMs){
+  if (pc.iceGatheringState === 'complete') return Promise.resolve();
+  return new Promise(resolve => {
+    let timer = null;
+    const done = () => {
+      pc.removeEventListener('icegatheringstatechange', onChange);
+      clearTimeout(timer);
+      resolve();
+    };
+    const onChange = () => { if (pc.iceGatheringState === 'complete') done(); };
+    pc.addEventListener('icegatheringstatechange', onChange);
+    timer = setTimeout(done, timeoutMs);
+  });
+}
+
+/**
+ * 从 SDP 里把候选挑出来。真机排查靠它：局域网直连能不能成，全看有没有
+ * 主机候选；而现代浏览器为了防指纹，主机候选的地址默认是 mDNS 假名
+ * （一串 uuid 加 .local），要靠组播才能解析回真实 IP —— 组播被禁的网络
+ * （企业网、开了客户端隔离的热点）就卡在这一步。
+ *
+ * 候选行长这样：
+ *   a=candidate:1 1 udp 2122260223 192.168.1.5 54321 typ host generation 0
+ *                              └ 地址        └ 端口  └ typ 后头才是类型
+ */
+function parseCandidates(sdp){
+  const out = [];
+  for (const line of String(sdp || '').split(/\r?\n/)){
+    if (!line.startsWith('a=candidate:')) continue;
+    const f = line.slice('a=candidate:'.length).trim().split(/\s+/);
+    if (f.length < 8) continue;                 // 字段不齐的丢掉，别让诊断自己崩
+    const addr = f[4];
+    out.push({
+      addr,
+      port: Number(f[5]),
+      proto: f[2],
+      type: f[6] === 'typ' ? f[7] : '',
+      mdns: /\.local$/i.test(addr),
+    });
+  }
+  return out;
+}
+
+/**
+ * 点对点传输。星型拓扑：每个加入端只跟房主建一条连接，加入端之间不互联。
+ * RoomController 只按 Transport 接口说话，完全不知道底下是 WebRTC 还是单机。
+ */
+class WebRtcTransport extends Transport {
+  constructor({ iceServers = [], gatherTimeoutMs = 2500, connectTimeoutMs = 20000 } = {}){
+    super();
+    this.iceServers = iceServers;          // 留空 = 只在局域网内连，不借助任何外部服务器
+    this.gatherTimeoutMs = gatherTimeoutMs;
+    this.connectTimeoutMs = connectTimeoutMs;
+    this._peers = new Map();               // peerId -> { pc, dc, open, queue, timer }
+    this._openFns = [];
+    this._stateFns = [];
+    this._seq = 0;
+  }
+
+  get kind(){ return 'webrtc'; }
+
+  get peerIds(){
+    const out = [];
+    for (const [id, p] of this._peers) if (p.open) out.push(id);
+    return out;
+  }
+
+  /** 某条通道打通时回调，配对界面用它来推进流程 */
+  onOpen(fn){ this._openFns.push(fn); return () => { this._openFns = this._openFns.filter(f=>f!==fn); }; }
+  /** 对端的连接活了/没了。传输层只报这个事实，不判断它意味着什么。 */
+  onPeerState(fn){ this._peerFns.push(fn); return () => { this._peerFns = this._peerFns.filter(f=>f!==fn); }; }
+  _peerState(peerId, ok){
+    const e = this._peers.get(peerId);
+    if (e && e.reported === ok) return;      // 同一状态别重复报（dc 和 pc 会各报一次）
+    if (e) e.reported = ok;
+    for (const fn of this._peerFns) fn(peerId, ok);
+  }
+
+  /** 底层连接状态变化时回调 —— 真机上连不通时，界面要能说出是「没连上」而不是干等 */
+  onStateChange(fn){ this._stateFns.push(fn); return () => { this._stateFns = this._stateFns.filter(f=>f!==fn); }; }
+
+  /** 这张邀请实际收集到的候选（诊断用） */
+  candidatesFor(peerId){
+    const e = this._peers.get(peerId);
+    if (!e || !e.pc || !e.pc.localDescription) return [];
+    return parseCandidates(e.pc.localDescription.sdp);
+  }
+
+  /** 所有对端里最糟的那个连接状态，用来给界面一句话 */
+  worstState(){
+    let worst = 'connected';
+    const rank = { new:0, connecting:1, disconnected:2, failed:3, closed:4 };
+    for (const [, p] of this._peers){
+      const s = p.connState || 'new';
+      if (p.open) continue;                       // 已经通的不用管
+      if ((rank[s] ?? 0) >= (rank[worst] ?? 0)) worst = s;
+    }
+    return worst;
+  }
+
+  /* ---------------- 底层 ---------------- */
+
+  _newPeer(peerId){
+    const pc = new RTCPeerConnection({ iceServers: this.iceServers });
+    const entry = { pc, dc:null, open:false, queue:[], timer:null, connState:'new' };
+    this._peers.set(peerId, entry);
+
+    pc.addEventListener('connectionstatechange', () => {
+      entry.connState = pc.connectionState;
+      for (const fn of this._stateFns) fn(peerId, pc.connectionState);
+      // 手机锁屏、走开、切后台，连接往往先变成 disconnected/failed，
+      // dc.onclose 要过很久才来 —— 所以要在这儿就报「人没了」，
+      // 不然房主会对着一个已经废掉的连接干等
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this._peerState(peerId, false);
+      else if (pc.connectionState === 'connected') this._peerState(peerId, true);
+    });
+    return entry;
+  }
+
+  _bindChannel(peerId, dc){
+    const entry = this._peers.get(peerId);
+    if (!entry) return;
+    entry.dc = dc;
+
+    dc.onopen = () => {
+      entry.open = true;
+      clearTimeout(entry.timer);
+      entry.timer = null;
+      for (const m of entry.queue.splice(0)) this.send(m, peerId);
+      for (const fn of this._openFns) fn(peerId);
+      this._peerState(peerId, true);
+    };
+    dc.onclose = () => {
+      entry.open = false;
+      for (const fn of this._openFns) fn(peerId, false);
+      this._peerState(peerId, false);
+    };
+    dc.onmessage = (e) => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+      this._emit(msg, peerId);
+    };
+  }
+
+  /** 通道还没开就先排队，开了再补发 —— 上层不用关心连接时机。 */
+  send(msg, to){
+    const peerId = to || 'host';           // 加入端不指定对端时，就是对房主说
+    const entry = this._peers.get(peerId);
+    if (!entry) return false;
+    if (!entry.open || !entry.dc || entry.dc.readyState !== 'open'){
+      entry.queue.push(msg);
+      return true;
+    }
+    try { entry.dc.send(JSON.stringify(msg)); return true; }
+    catch { return false; }
+  }
+
+  discard(peerId){
+    const entry = this._peers.get(peerId);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    try { entry.dc && entry.dc.close(); } catch {}
+    try { entry.pc.close(); } catch {}
+    this._peers.delete(peerId);
+  }
+
+  close(){
+    for (const id of [...this._peers.keys()]) this.discard(id);
+  }
+
+  /* ---------------- 房主侧 ---------------- */
+
+  /** 生成一份邀请，返回可以直接编成二维码的载荷。 */
+  async hostOffer(){
+    const peerId = 'p' + (++this._seq);
+    const entry = this._newPeer(peerId);
+    this._bindChannel(peerId, entry.pc.createDataChannel('gp', { ordered:true }));
+
+    await entry.pc.setLocalDescription(await entry.pc.createOffer());
+    await waitForIce(entry.pc, this.gatherTimeoutMs);
+
+    entry.timer = setTimeout(() => this.discard(peerId), this.connectTimeoutMs);
+    return { peerId, payload: await packSignal({ pid:peerId, sdp: entry.pc.localDescription.sdp }) };
+  }
+
+  /** 收到加入端扫回来的回执，接上。 */
+  async hostAccept(payload){
+    const { pid, sdp } = await unpackSignal(payload);
+    const entry = this._peers.get(pid);
+    if (!entry) throw new Error('这张邀请已经过期了，重新点一次「邀请玩家」');
+    await entry.pc.setRemoteDescription({ type:'answer', sdp });
+    return pid;
+  }
+
+  /* ---------------- 加入端侧 ---------------- */
+
+  /** 拿着扫来的邀请，生成回执。返回的载荷要编成二维码让房主扫回去。 */
+  async clientAnswer(payload){
+    const { pid, sdp } = await unpackSignal(payload);
+    const entry = this._newPeer('host');
+    entry.pc.ondatachannel = (e) => this._bindChannel('host', e.channel);
+
+    await entry.pc.setRemoteDescription({ type:'offer', sdp });
+    await entry.pc.setLocalDescription(await entry.pc.createAnswer());
+    await waitForIce(entry.pc, this.gatherTimeoutMs);
+
+    return { peerId: pid, payload: await packSignal({ pid, sdp: entry.pc.localDescription.sdp }) };
+  }
+
+  /** 已经连上的对端数，用来给用户一句「还差几步」 */
+  get connectedCount(){ return this.peerIds.length; }
+}
+
+/* ---------------- 跨标签页转送 ----------------
+   房主用系统相机扫回执，回执会打开一个新标签页。新标签页自己没法完成握手
+   （发出 offer 的 RTCPeerConnection 在原来那页），所以它把回执广播回去。
+   同源页面之间用 BroadcastChannel 直连，不走网络。 */
+const SIGNAL_CHANNEL = 'gatherpop-signal';
+
+/** 转送并等一声回执。resolve(false) 说明原来那页已经不在了。 */
+function relaySignal(payload){
+  if (typeof BroadcastChannel !== 'function') return Promise.resolve(false);
+  const ch = new BroadcastChannel(SIGNAL_CHANNEL);
+  const id = Math.random().toString(36).slice(2, 10);
+
+  return new Promise(resolve => {
+    let done = false;
+    const finish = (ok) => { if (done) return; done = true; ch.close(); resolve(ok); };
+    ch.onmessage = (e) => { if (e.data && e.data.kind === 'ack' && e.data.id === id) finish(true); };
+    ch.postMessage({ kind:'answer', payload, id });
+    setTimeout(() => finish(false), 800);   // 没等到 ack 就老实说没送到
+  });
+}
+
+/** 房主侧：听新标签页转回来的回执 */
+function onRelayedSignal(fn){
+  if (typeof BroadcastChannel !== 'function') return () => {};
+  const ch = new BroadcastChannel(SIGNAL_CHANNEL);
+  ch.onmessage = (e) => {
+    if (!e.data || e.data.kind !== 'answer') return;
+    ch.postMessage({ kind:'ack', id: e.data.id });   // 先应一声，让对面知道有人接
+    fn(e.data.payload);
+  };
+  return () => ch.close();
+}
+
+/** 当前页面地址，用来拼邀请链接（# 片段不会发往服务器） */
+function currentBase(){
+  return location.origin + location.pathname;
+}
+// ==== NET:END ====
+</script>
+
+<!-- ==========================================================================
+     界面层
+     ========================================================================== -->
+<script id="gatherpop-ui">
+(function(){
+'use strict';
+
+const app = document.getElementById('app');
+
+/* 传输方式：浏览器支持 WebRTC 就走点对点，否则退回同页回环（单机照样能玩）。
+   注意这是唯一一处区分「单机/联机」的地方 —— RoomController 完全不知情。 */
+const net = (typeof RTCPeerConnection === 'function') ? new WebRtcTransport() : null;
+const ctrl = new RoomController({ transport: net || new LocalTransport() });
+
+let screen = 'home';        // home | room | joining | relay
+let joinName = '';
+let presetFor = null;
+let pairing = null;         // 房主侧：当前这张邀请 { status, peerId, url, qr, error }
+let joinState = null;       // 加入端侧：{ status, answer, error }
+let relayState = null;      // 转送页侧：{ status: sending | ok | lost }
+let selfCheck = null;       // 自检结果，非空时以浮层显示
+let picker = null;          // 方案浮层：{ gameId, code, msg }
+let skipPicker = false;     // 「有人不在了？」浮层：替掉线的人走那一步
+/* 本端界面自己的临时状态。换了游戏就清掉 —— 不然上一局选的格子会残留到下一局。 */
+let localUi = {};
+/* 不过里面有些键是「一次操作用完就该忘掉」的（棋盘上选中的那个格子），
+   有些是「用完还得留着」的（画笔当前的颜色）。后者由插件的 uiKeep 点名。
+   不点名就全清 —— 保持老行为。换游戏时传 all=true，连 uiKeep 也一起清。 */
+function resetLocalUi(all){
+  const keep = all ? [] : ((ctrl && ctrl.plugin && ctrl.plugin.uiKeep) || []);
+  const next = {};
+  for (const k of keep) if (k in localUi) next[k] = localUi[k];
+  localUi = next;
+}
+
+/** 一句人话的提示，替代把异常抛到控制台 */
+let toastTimer = null;
+function toast(msg){
+  let el = document.getElementById('toast');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.className = 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 1800);
+}
+
+/* ---------- 扫码配对 ---------- */
+
+/** 把一段载荷编成二维码。太长了就给一句人话，而不是塞一个扫不出来的码。 */
+function qrFor(payload){
+  try {
+    return QRCode.toSvg(QRCode.encode(payload, { level:'M' }), { scale:4, margin:4 });
+  } catch {
+    return null;   // 内容超出二维码容量
+  }
+}
+
+/** 房主：生成一张邀请 */
+async function openInvite(){
+  if (!net){ toast('这个浏览器不支持点对点联机'); return; }
+  pairing = { status:'working' };
+  render();
+  try {
+    const { peerId, payload } = await net.hostOffer();
+    const url = signalUrl(currentBase(), 'o', payload);
+    pairing = {
+      status: 'ready', peerId, url,
+      qr: qrFor(url),
+      cands: net.candidatesFor(peerId),   // 诊断：这张邀请实际收集到了什么
+    };
+  } catch (err){
+    pairing = { status:'error', error: err.message || String(err) };
+  }
+  render();
+}
+
+/** 粘贴进来的可能是整条链接，也可能只是载荷，两种都认（邀请 o / 回执 a 都走这里） */
+function payloadFromPaste(text){
+  const t = String(text || '').trim();
+  const sig = readSignalFromHash((t.match(/#[oa]=.+$/) || [''])[0]);
+  if (sig) return sig.payload;
+  return t.replace(/^[oa]=/, '');
+}
+
+/** 房主：拿到回执（扫出来的，或者手动粘进来的） */
+async function acceptAnswer(payload){
+  if (!net || !pairing) return;
+  try {
+    await net.hostAccept(payload.trim());
+    pairing = null;
+    toast('接上了，等人进房间');
+  } catch (err){
+    toast(err.message || '回执读不出来');
+  }
+  render();
+}
+
+/** 加入端：拿着扫来的邀请生成回执 */
+async function startJoining(payload){
+  joinState = { status:'working' };
+  render();
+  try {
+    const { payload: answer } = await net.clientAnswer(payload);
+    const url = signalUrl(currentBase(), 'a', answer);
+    joinState = { status:'waiting', url, qr: qrFor(url) };
+  } catch (err){
+    joinState = { status:'error', error: err.message || String(err) };
+  }
+  render();
+}
+
+/* 启动时看地址栏里有没有带信令（都是 # 片段，不会发往服务器） */
+const bootSignal = readSignalFromHash(location.hash);
+
+if (net){
+  // 通道打通 —— 加入端这时才正式进房间（数据通道必须先活着）
+  net.onOpen(() => {
+    if (screen === 'joining' && ctrl.mode !== 'client'){
+      ctrl.joinAsClient(net, joinName.trim() || '玩家');
+      // 把邀请码从地址栏抹掉：不然用户一刷新，会拿着一张已经用过的邀请重走一遍
+      try { history.replaceState(null, '', location.pathname + location.search); } catch {}
+      screen = 'room';
+      render();
+    } else {
+      render();
+    }
+  });
+
+  // 房主侧：新标签页把回执转回来了。
+  // 转送页自己绝不能挂这个监听 —— 同源同名的 BroadcastChannel 之间是互投的，
+  // 它会把刚发出去的回执又「收」回来当成回执，然后自己给自己回一声 ack，
+  // 页面就谎报转送成功了。转送页不是房主，没有理由听。
+  if (!bootSignal || bootSignal.kind !== 'a'){
+    onRelayedSignal((payload) => { if (pairing) acceptAnswer(payload); });
+  }
+
+  // 底层连接真的失败了就说出来 —— 不然用户只看到「等人进房间」干等
+  net.onStateChange((peerId, state) => {
+    if (state === 'failed'){
+      toast('没连上：两台设备之间建不起直连。多半是路由器开了客户端隔离，或者这个网络禁止设备互访。');
+    }
+  });
+}
+
+if (bootSignal){
+  if (!net){
+    joinState = { status:'error', error:'这个浏览器不支持点对点联机（需要 WebRTC）。' };
+    screen = 'joining';
+  } else if (bootSignal.kind === 'a'){
+    // 房主扫回执落到的这一页，只负责转送
+    screen = 'relay';
+    relayState = { status:'sending' };
+    // 等一声回执再下定论 —— 原来那页要是已经关了，得老实说没送到
+    relaySignal(bootSignal.payload).then(ok => {
+      relayState = { status: ok ? 'ok' : 'lost' };
+      render();
+    });
+  } else {
+    screen = 'joining';
+    startJoining(bootSignal.payload);
+  }
+}
+
+/* ---------- 事件代理：所有按钮都走 data-act ---------- */
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = JSON.parse(el.getAttribute('data-act'));
+
+  // 插件想把某个输入框里当前的内容一起带上时，写 {"textFrom":"<元素 id>"}。
+  // 放这儿是为了让外壳保持通用 —— 它不需要知道「猜词」这回事，只需要知道
+  // 「这个动作要捎上那个框里的字」。
+  if (act.textFrom){
+    const inp = document.getElementById(act.textFrom);
+    act.text = inp ? inp.value : '';
+    delete act.textFrom;      // 元素 id 是界面层的事，没理由跟着动作过线
+  }
+
+  switch (act.t){
+    case 'goHome':      screen = 'home'; skipPicker = false; break;
+    case 'create':      ctrl.createRoom(act.name || '房主'); screen = 'room'; break;
+    case 'invite':      openInvite(); return;          // 自己会 render
+    case 'closeInvite': pairing = null; break;
+    case 'selfCheck':     runSelfCheck(); return;      // 自己会 render
+    case 'closeSelfCheck': selfCheck = null; break;
+    case 'pasteOffer': {
+      if (!net){ toast('这个浏览器不支持点对点联机'); return; }
+      const text = prompt('把对方发来的邀请链接粘进来（也可以只粘 #o= 后面那一段）', '');
+      if (!text) return;
+      joinState = { status:'working' };
+      screen = 'joining';
+      startJoining(payloadFromPaste(text));
+      return;                                          // startJoining 自己会 render
+    }
+    case 'acceptAnswer': {
+      const text = prompt('把回执链接粘进来（也可以只粘 #a= 后面那一段）', '');
+      if (text) acceptAnswer(payloadFromPaste(text));
+      return;
+    }
+    case 'start':
+    case 'switch': {
+      // 人数不够时给一句人话，而不是抛个异常出来
+      if (!ctrl.canStart(act.game)){
+        const p = pluginById(act.game);
+        toast(`${p.name} 至少要 ${p.minPlayers} 人`);
+        break;
+      }
+      resetLocalUi(true);      // 换游戏就清掉上一局残留的界面状态，连 uiKeep 也不留
+      skipPicker = false;      // 浮层里那些「谁卡住了」是上一局的事，别带过去
+      if (act.t === 'start'){ ctrl.startGame(act.game); screen = 'room'; }
+      else { ctrl.switchGame(act.game); }
+      break;
+    }
+    case 'endGame':     ctrl.endGame(); screen = 'home'; break;
+    case 'editOptions':
+    case 'editPool': {
+      // 预填当前内容：插件自己知道怎么把 state 写回文本
+      const p = ctrl.plugin;
+      const cur = (p && typeof p.presetToText === 'function' && ctrl.room.mounted)
+        ? p.presetToText(ctrl.room.mounted.state) : '';
+      const text = prompt((p && p.presetHint) || '每行一项', cur);
+      if (text !== null){
+        ctrl.submit({ t: act.t === 'editPool' ? 'setPool' : 'setOptions', text });
+      }
+      break;
+    }
+    case 'openPresets':   openPresets(); return;
+    case 'closePresets':  picker = null; break;
+    /* 跳过卡住的人。真正的裁决在 RoomController 里 —— 这儿只是把动作发出去，
+       房主以外的人发了也过不了那一关（界面本来也只给房主看这个入口）。 */
+    case 'openSkip':      skipPicker = true; break;
+    case 'closeSkip':     skipPicker = false; break;
+    case 'skipPlayer':
+      ctrl.submit({ t:'skipPlayer', id: act.id });
+      skipPicker = false;                 // 关掉；要跳第二个人就再点开一次
+      break;
+    case 'usePreset':     usePreset(act.id); return;
+    case 'savePreset':    saveCurrentPreset(); return;
+    case 'deletePreset':  deletePreset(act.id); break;
+    case 'sharePreset':   sharePreset(act.id); return;
+    case 'importPreset':  importPreset(); return;
+    // 本端界面自己的临时状态（棋盘上选了哪个子）。刻意不走 ctrl.submit ——
+    // 它不该发给房主，也不该进游戏状态
+    case 'sel':         localUi[act.k] = act.v; break;
+    case 'scoreAdd':    ctrl.addScore(act.member, act.delta); break;
+    case 'resetScores': ctrl.resetScores(); break;
+    default:            ctrl.submit(act); resetLocalUi(); break;
+  }
+  render();
+});
+
+/* 昵称输入 + 插件自己声明的输入框 */
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'joinName'){ joinName = e.target.value; return; }
+  // 带 data-ui 的输入框，内容镜像进 ctx.ui —— 这样别人动一下触发重渲染、
+  // 整个 innerHTML 被换掉的时候，正在打的字不会被抹掉。
+  const k = e.target.getAttribute ? e.target.getAttribute('data-ui') : null;
+  if (k) localUi[k] = e.target.value;
+});
+
+ctrl.subscribe(render);
+
+/* 插件 render / afterRender 拿到的同一份 ctx。两处共用一份，
+   是为了让「渲染时看到的东西」和「后渲染时看到的东西」不会各说各话。 */
+function gameCtx(){
+  return {
+    me: ctrl.me ? ctrl.me.id : null,
+    members: ctrl.room.members,
+    isHost: ctrl.isHost,
+    scores: ctrl.room.scores,
+    ui: localUi,
+    submit: (a) => ctrl.submit(a),   // 只有 afterRender 用得上
+  };
+}
+
+/* ---------- 渲染 ---------- */
+function render(){
+  let body;
+  if (screen === 'relay')        body = relayHTML();
+  else if (screen === 'joining') body = joiningHTML();
+  else if (screen === 'room' && ctrl.room) body = roomHTML();
+  else body = homeHTML();
+  app.innerHTML = body + (pairing ? inviteHTML() : '')
+                       + (selfCheck ? selfCheckHTML() : '')
+                       + (skipPicker ? skipHTML() : '')
+                       + (picker ? presetsHTML() : '');
+
+  // 插件的可选钩子。画布这类东西没法用 HTML 字符串表达 —— 得等节点真的挂上去，
+  // 才能往上画、才能接指针事件。只有它碰 DOM，而且只碰自己那一块。
+  const p = ctrl.plugin;
+  if (screen === 'room' && ctrl.room && p && typeof p.afterRender === 'function'){
+    p.afterRender(ctrl.myView, gameCtx(), app);
+  }
+}
+
+/* 房主扫回执时打开的新标签页。它自己完不成握手 —— 发出 offer 的
+   RTCPeerConnection 在原来那页 —— 所以只负责把回执广播回去。 */
+function relayHTML(){
+  const st = relayState || { status:'sending' };
+
+  const face = {
+    sending: ['…', '正在把回执转回原来的页面'],
+    ok:      ['✓', '回执已转回原来的页面'],
+    lost:    ['!', '没找到原来的房间页'],
+  }[st.status];
+
+  let note;
+  if (st.status === 'sending'){
+    note = '别关这一页，马上就好。';
+  } else if (st.status === 'ok'){
+    note = '连接应该已经接上了。<b>这一页可以直接关掉</b>，回到刚才那个房间页。';
+  } else {
+    note = '多半是那个页面已经关了、刷新了，或者扫回执的不是同一台设备。'
+         + '让房主重新点一次「邀请玩家」，用<b>同一台设备、同一个浏览器</b>扫回执。';
+  }
+
+  return `
+    <div class="overlay"><div class="inner">
+      <div class="card" style="text-align:center">
+        <div style="font-size:30px">${face[0]}</div>
+        <h1 style="font-size:18px;margin:10px 0 4px">${face[1]}</h1>
+        <p class="note">${note}</p>
+        ${st.status === 'sending' ? '<div class="spinner" style="margin-top:12px"></div>' : ''}
+        <div class="row" style="justify-content:center;margin-top:14px">
+          <button class="btn ghost" data-act='{"t":"goHome"}'>回到首页</button>
+        </div>
+      </div>
+    </div></div>`;
+}
+
+/* 加入端：扫了房主的邀请码之后落到的这一页 */
+function joiningHTML(){
+  const st = joinState || { status:'working' };
+
+  if (st.status === 'error'){
+    return `
+      <div class="overlay"><div class="inner">
+        <div class="card">
+          <h1 style="font-size:18px;margin:0 0 6px">这张邀请用不了</h1>
+          <p class="note">${esc(st.error)}</p>
+          <p class="note">多半是房主那一页关了或者刷新过。让房主重新点一次「邀请玩家」再扫。</p>
+          <button class="btn ghost" data-act='{"t":"goHome"}'>回到首页</button>
+        </div>
+      </div></div>`;
+  }
+
+  const input = `
+    <label class="note" style="display:block;margin-bottom:6px">你叫什么</label>
+    <input id="joinName" class="btn ghost" style="width:100%;text-align:left;margin-bottom:4px"
+           placeholder="昵称" value="${esc(joinName)}">`;
+
+  if (st.status === 'working'){
+    return `
+      <div class="overlay"><div class="inner">
+        <div class="card" style="text-align:center">
+          <div style="padding:24px 0"><span class="spinner"></span>
+            <div class="note" style="margin-top:10px">正在生成回执…</div></div>
+          ${input}
+        </div>
+      </div></div>`;
+  }
+
+  // waiting：回执已生成，等房主扫
+  const qrBox = st.qr
+    ? `<div class="qr">${st.qr}</div>`
+    : `<div class="card" style="margin:12px 0">
+         <p class="note">回执太长，二维码装不下。把下面这段念给房主，或者直接发给他：</p>
+         <div class="linkbox">${esc(st.url)}</div>
+       </div>`;
+
+  return `
+    <div class="overlay"><div class="inner">
+      <h1 style="font-size:18px;margin:0 0 4px">差最后一步</h1>
+      <p class="note">让房主用相机扫下面这个码。扫完你这边会自动进房间，不用再点。</p>
+      ${qrBox}
+      <ol class="steps">
+        <li>房主打开相机，对着这个码扫</li>
+        <li>房主那边会弹出「接上了」</li>
+        <li>这一页自动进入房间</li>
+      </ol>
+      <div class="card" style="margin-top:14px">${input}
+        <div class="note" style="margin-top:6px">
+          昵称可以先填，也可以等进去了再改。房主没扫之前，这一页别关。
+        </div>
+      </div>
+      <div class="card" style="margin-top:10px">
+        <details>
+          <summary class="note" style="cursor:pointer">扫不了？改用文字</summary>
+          <div class="linkbox" style="margin-top:8px">${esc(st.url)}</div>
+        </details>
+      </div>
+    </div></div>`;
+}
+
+/* ---------- 方案：挑一个 / 另存为 / 分享 / 导入 ---------- */
+
+/** 这款游戏支不支持方案 */
+function hasPresets(plugin){ return !!(plugin && (plugin.presets || plugin.readPreset)); }
+
+function openPresets(){
+  if (!ctrl.plugin) return;
+  picker = { gameId: ctrl.room.currentGameId, code:null, msg:null };
+  render();
+}
+
+/** 把当前这局的实际配置抽成一份方案数据 —— 走的是和用户手敲同一条文本通道，
+    所以「另存为」存下来的东西，跟手动敲进去的完全等价。 */
+function currentPresetData(){
+  const p = ctrl.plugin;
+  if (!p || !ctrl.room.mounted || typeof p.presetToText !== 'function'
+      || typeof p.readPreset !== 'function') return null;
+  return p.readPreset(p.presetToText(ctrl.room.mounted.state));
+}
+
+function saveCurrentPreset(){
+  const p = ctrl.plugin;
+  const data = currentPresetData();
+  if (!data) { picker.msg = '这款游戏没有可以保存的配置。'; render(); return; }
+
+  const name = prompt('给这套方案起个名字', (p.presets && p.presets[0] && p.presets[0].name) || '我的方案');
+  if (name === null) return;
+
+  const mine = loadMyPresets();
+  const preset = {
+    id: 'mine:' + Math.random().toString(36).slice(2, 10),
+    gameId: ctrl.room.currentGameId,
+    name: String(name).trim().slice(0, 30) || '我的方案',
+    note: '存在这台设备上',
+    data, official: false,
+  };
+  mine.push(preset);
+  const ok = saveMyPresets(mine);
+  picker.msg = ok ? `已存下「${preset.name}」。刷新也在，换台设备就没了。`
+                  : '这台设备的存储写不进去（可能是隐私模式），方案只在这局有效。';
+  render();
+}
+
+function deletePreset(id){
+  saveMyPresets(loadMyPresets().filter(p => p.id !== id));
+  render();
+}
+
+function sharePreset(id){
+  const all = presetsFor(ctrl.room.currentGameId);
+  const preset = all.find(p => p.id === id);
+  if (!preset) return;
+  if (!ctrl.canSharePreset()){ picker.msg = '当前权益不能分享方案。'; render(); return; }
+  picker.code = presetToCode(preset);
+  picker.msg = '把下面这段发给别人，他粘进「导入分享码」就能用。';
+  render();
+}
+
+function importPreset(){
+  const text = prompt('把别人分享的码粘进来', '');
+  if (!text) return;
+
+  const preset = presetFromCode(text);
+  if (!preset){ picker.msg = '这段码读不出来 —— 可能是复制的时候缺了一截，或者版本对不上。'; render(); return; }
+
+  const mine = loadMyPresets();
+  if (!mine.some(p => p.id === preset.id)) mine.push(preset);
+  saveMyPresets(mine);
+
+  picker.gameId = preset.gameId;      // 切到它所属的那款游戏
+  picker.msg = `导入成功：「${preset.name}」（${pluginById(preset.gameId).name}）。`;
+  render();
+}
+
+function usePreset(id){
+  const preset = presetsFor(ctrl.room.currentGameId).find(p => p.id === id);
+  if (!preset) return;
+  const p = pluginById(preset.gameId);
+  if (!ctrl.canStart(preset.gameId)){ toast(`${p.name} 至少要 ${p.minPlayers} 人`); return; }
+
+  try {
+    // 换方案 = 用新配置重开一局。成员和记分牌照旧。
+    if (ctrl.room.currentGameId === preset.gameId && ctrl.room.mounted) ctrl.switchGame(preset.gameId, { preset: preset.data });
+    else ctrl.startGame(preset.gameId, { preset: preset.data });
+    picker = null;
+    toast(`用「${preset.name}」开了一局`);
+  } catch (err){
+    picker.msg = err.message || String(err);
+  }
+  render();
+}
+
+function presetsHTML(){
+  const st = picker;
+  if (!st) return '';
+  const p = pluginById(st.gameId);
+  if (!p) return '';
+
+  const official = builtinPresets(st.gameId);
+  const mine = loadMyPresets().filter(x => x.gameId === st.gameId);
+
+  const card = (x) => `
+    <div class="preset">
+      <div class="info">
+        <div class="nm">${esc(x.name)}</div>
+        ${x.note ? `<div class="nt">${esc(x.note)}</div>` : ''}
+      </div>
+      <span class="tag ${x.official ? '' : 'mine'}">${x.official ? '官方' : '我的'}</span>
+      <button class="btn sm primary" data-act='{"t":"usePreset","id":"${esc(x.id)}"}'>用</button>
+      <button class="btn sm ghost" data-act='{"t":"sharePreset","id":"${esc(x.id)}"}'>分享</button>
+      ${x.official ? '' : `<button class="btn sm ghost" data-act='{"t":"deletePreset","id":"${esc(x.id)}"}'>删</button>`}
+    </div>`;
+
+  const empty = !official.length && !mine.length;
+
+  return `
+    <div class="overlay"><div class="inner">
+      <div class="row" style="justify-content:space-between">
+        <h1 style="font-size:18px;margin:0">${esc(p.name)} · 方案</h1>
+        <button class="btn sm ghost" data-act='{"t":"closePresets"}'>关掉</button>
+      </div>
+      <p class="note" style="margin:8px 0 0">
+        方案就是这款游戏的一份预设配置。换方案等于用新配置重开一局 ——
+        <b>成员和记分牌都不动</b>。
+      </p>
+
+      ${st.msg ? `<div class="card" style="margin-top:12px"><div class="note">${esc(st.msg)}</div></div>` : ''}
+
+      ${st.code ? `
+        <div class="card" style="margin-top:12px">
+          <div class="note" style="margin-bottom:6px">分享码（长按全选复制）</div>
+          <div class="linkbox">${esc(st.code)}</div>
+        </div>` : ''}
+
+      ${empty ? `<div class="card" style="margin-top:12px">
+          <div class="note">这款游戏还没有内置方案。你可以把它调成想要的样子，
+          然后点下面的「另存为」。</div>
+        </div>` : ''}
+
+      ${official.length ? `<h2>官方种子</h2>${official.map(card).join('')}` : ''}
+      ${mine.length ? `<h2>我存的</h2>${mine.map(card).join('')}` : ''}
+
+      <div class="card" style="margin-top:14px">
+        <div class="row">
+          <button class="btn ghost sm" data-act='{"t":"savePreset"}'>把当前配置另存为</button>
+          <button class="btn ghost sm" data-act='{"t":"importPreset"}'>导入分享码</button>
+        </div>
+        <div class="note" style="margin-top:8px">
+          围响没有服务器，所以「方案市场」就是这三样：内置的种子、存在这台设备上的，
+          以及别人发给你的一段码。<b>没有账号，也不会上传任何东西。</b>
+        </div>
+      </div>
+    </div></div>`;
+}
+
+/* ---------- 自检：真机排查用 ---------- */
+
+/**
+ * 一次把「这台设备到底行不行」说清楚。它真的建一条连接、真的收一遍候选，
+ * 所以报出来的不是「浏览器声称支持」，是「实际拿到了什么」。
+ *
+ * 为什么需要它：联机失败有三类完全不同的原因 —— 二维码太密扫不动、
+ * 候选收集不到（组播被禁）、压缩流不支持。界面不区分的话，用户只能看到
+ * 「没反应」，没法判断该修哪一头。
+ */
+async function runSelfCheck(){
+  selfCheck = { status:'running', rows:[] };
+  render();
+
+  const rows = [];
+  const add = (label, value, level = 'ok') => rows.push({ label, value, level });
+
+  const proto = (typeof location !== 'undefined' && location.protocol) || '';
+  add('打开方式', proto === 'file:' ? 'file:// 本地文件'
+      : proto ? proto + '//' + (location.host || '') : '（未知）');
+  add('安全上下文', (typeof isSecureContext === 'boolean' && isSecureContext) ? '是'
+      : '否 —— 只影响网页自己调相机，不影响点对点联机');
+
+  for (const [name, yes] of [
+    ['WebRTC 数据通道', typeof RTCPeerConnection === 'function'],
+    ['BroadcastChannel', typeof BroadcastChannel === 'function'],
+    ['CompressionStream', typeof CompressionStream === 'function'],
+    ['DecompressionStream', typeof DecompressionStream === 'function'],
+  ]) add(name, yes ? '支持' : '不支持', yes ? 'ok' : 'bad');
+
+  // 真的建一条连接，看它实际收集到什么
+  if (typeof RTCPeerConnection === 'function'){
+    let pc = null;
+    try {
+      pc = new RTCPeerConnection({ iceServers: [] });
+      pc.createDataChannel('probe');
+      await pc.setLocalDescription(await pc.createOffer());
+      await waitForIce(pc, 3000);
+
+      const sdp = (pc.localDescription && pc.localDescription.sdp) || '';
+      const cands = parseCandidates(sdp);
+      const hosts = cands.filter(c => c.type === 'host');
+      const mdns  = cands.filter(c => c.mdns);
+
+      add('收集到的候选', cands.length ? cands.length + ' 个' : '一个都没有',
+          cands.length ? 'ok' : 'bad');
+      if (cands.length){
+        add('主机候选', hosts.length ? hosts.length + ' 个'
+            : '没有 —— 局域网内也连不起来', hosts.length ? 'ok' : 'bad');
+        add('mDNS 假名候选', mdns.length
+            ? mdns.length + ' 个 —— 要靠组播解析，组播被禁的网络会卡在这'
+            : '没有', mdns.length ? 'warn' : 'ok');
+      }
+
+      // 拿这份真 SDP 量一量二维码到底多密
+      const url = signalUrl(currentBase(), 'o',
+                           await packSignal({ pid:'p1', sdp }));
+      add('邀请码长度', url.length + ' 字符');
+      try {
+        const q = QRCode.encode(url);
+        add('二维码', `v${q.version}，${q.size}×${q.size}`,
+            q.version <= 20 ? 'ok' : 'warn');
+      } catch {
+        add('二维码', '装不下，会退成文字链接', 'warn');
+      }
+    } catch (err){
+      add('试建连接', '失败：' + ((err && err.message) || err), 'bad');
+    } finally {
+      try { if (pc) pc.close(); } catch {}
+    }
+  }
+
+  selfCheck = { status:'done', rows };
+  render();
+}
+
+/* 「有人不在了？」—— 掉线的人卡在哪一步，房主就在这儿替他走哪一步。
+
+   关键是**先把结果写出来再让人按**：跳过一去不回，所以在每个成员旁边直接
+   摆出「现在跳过他，这一局会变成什么样」。这个预览不是另写一套文案 ——
+   对每个成员调一次插件的 skip（纯函数，不碰真状态），把算出来的下一帧交给
+   插件自己的 summarize 念成人话，跟历史记录里那一行是同一套说法。
+
+   于是按钮要不要置灰也就有了依据：skip 返回 null = 这人现在没卡住什么。 */
+function skipHTML(){
+  const room = ctrl.room;
+  const p = ctrl.plugin;
+  const st = room && room.mounted ? room.mounted.state : null;
+
+  const rows = (room ? room.members : []).map(m => {
+    const next = (p && typeof p.skip === 'function' && st) ? p.skip(st, m.id) : null;
+    const preview = next ? summarize({ gameId: room.mounted.gameId, state: next }) : null;
+    return `
+      <div class="preset">
+        <div class="info">
+          <div class="nm">${esc(m.name)}${m.isHost ? ' ·房主' : ''}${m.connected ? '' : ' ·不在线'}</div>
+          <div class="nt">${preview ? `现在跳过他 → ${esc(preview)}` : '现在没卡住什么'}</div>
+        </div>
+        <button class="btn sm ${preview ? 'primary' : 'ghost'}" ${preview ? '' : 'disabled'}
+                data-act='{"t":"skipPlayer","id":"${esc(m.id)}"}'>跳过</button>
+      </div>`;
+  }).join('');
+
+  const idle = !p || typeof p.skip !== 'function';
+
+  return `
+    <div class="overlay"><div class="inner">
+      <div class="row" style="justify-content:space-between">
+        <h1 style="font-size:18px;margin:0">有人不在了？</h1>
+        <button class="btn sm ghost" data-act='{"t":"closeSkip"}'>关掉</button>
+      </div>
+      <p class="note" style="margin:8px 0 0">
+        手机锁屏、走开、掉出去 —— 轮到他的那一步就永远等不到人。这里可以
+        <b>替他走这一步</b>，让这一局接着往下走，不用整个丢掉。
+      </p>
+
+      ${idle
+        ? `<div class="card" style="margin-top:12px"><div class="note">
+             这款游戏没有「轮到谁」这回事，谁不在都不影响往下走。
+           </div></div>`
+        : `<div class="card" style="margin-top:12px">${rows}</div>`}
+
+      <div class="note" style="margin-top:12px">
+        跳过一次<b>不可撤销</b>，而且他要是回来了也<b>不会自动接回去</b> ——
+        得重新加入。所以按钮旁边写清楚了跳完会变成什么样，看清楚再按。
+      </div>
+    </div></div>`;
+}
+
+function selfCheckHTML(){
+  const st = selfCheck || { status:'running', rows:[] };
+  const mark = { ok:'✓', warn:'!', bad:'✗' };
+
+  return `
+    <div class="overlay"><div class="inner">
+      <div class="row" style="justify-content:space-between">
+        <h1 style="font-size:18px;margin:0">这台设备能不能联机</h1>
+        <button class="btn sm ghost" data-act='{"t":"closeSelfCheck"}'>关掉</button>
+      </div>
+      <p class="note" style="margin:8px 0 0">
+        下面是这台设备<b>实际</b>测出来的结果，不是浏览器的自称。
+      </p>
+
+      ${st.status === 'running'
+        ? `<div class="card" style="text-align:center;padding:24px 0">
+             <span class="spinner"></span>
+             <div class="note" style="margin-top:10px">正在试建一条连接…</div>
+           </div>`
+        : `<div class="card" style="margin-top:12px">
+             ${st.rows.map(r => `
+               <div class="diag ${r.level}">
+                 <span class="mk">${mark[r.level] || '·'}</span>
+                 <span class="lb">${esc(r.label)}</span>
+                 <span class="vl">${esc(r.value)}</span>
+               </div>`).join('')}
+           </div>`}
+
+      <div class="card" style="margin-top:10px">
+        <div class="note">
+          两边都跑一次这个自检再配对，能省很多来回。要看的三件事：
+          <b>二维码版本</b>（超过 v20 就偏密，扫不动是正常的）、
+          <b>有没有主机候选</b>（没有就说明这个网络不让设备之间直连）、
+          <b>有没有 mDNS 假名</b>（有的话要指望组播没被禁）。
+        </div>
+      </div>
+    </div></div>`;
+}
+
+/** 邀请浮层里那行诊断。没有候选是最要命的情况，得当场说出来 */
+function candNote(cands){
+  if (!cands) return '';
+  if (!cands.length){
+    return `<div class="note" style="color:#e87070;margin-top:8px">
+      这张邀请<b>一个候选地址都没收到</b>。多半是浏览器还没收集完就出了码，
+      关掉重开一次「邀请玩家」；还是一样的话，就是这个网络不让设备之间直连。
+    </div>`;
+  }
+  const mdns = cands.filter(c => c.mdns).length;
+  return `<div class="note" style="margin-top:8px">
+    这张邀请带了 ${cands.length} 个候选${mdns ? `（其中 ${mdns} 个是 mDNS 假名，要靠组播解析）` : ''}。
+  </div>`;
+}
+
+/* 房主侧：邀请浮层 */
+function inviteHTML(){
+  const p = pairing || {};
+
+  if (p.status === 'working'){
+    return `
+      <div class="overlay"><div class="inner">
+        <div class="card" style="text-align:center">
+          <div style="padding:24px 0"><span class="spinner"></span>
+            <div class="note" style="margin-top:10px">正在准备邀请…</div></div>
+        </div>
+      </div></div>`;
+  }
+
+  const qrBox = p.qr
+    ? `<div class="qr">${p.qr}</div>`
+    : `<div class="card" style="margin:12px 0">
+         <p class="note">邀请内容太长，二维码装不下。把下面这条发给对方，他打开就能进：</p>
+         <div class="linkbox">${esc(p.url || p.error || '')}</div>
+       </div>`;
+
+  return `
+    <div class="overlay"><div class="inner">
+      <div class="row" style="justify-content:space-between">
+        <h1 style="font-size:18px;margin:0">邀请玩家</h1>
+        <button class="btn sm ghost" data-act='{"t":"closeInvite"}'>关掉</button>
+      </div>
+
+      <p class="note" style="margin:8px 0 0">让朋友用相机扫这个码，或者把下面的链接发给他粘进去。</p>
+      ${qrBox}
+      ${candNote(p.cands)}
+
+      <ol class="steps">
+        <li>朋友用系统相机扫上面的码，会打开围响</li>
+        <li>他那边会显示一个回执码</li>
+        <li>你用自己的相机扫那个回执码 —— 会跳出一个新页面，然后自动接上</li>
+      </ol>
+
+      <div class="card" style="margin-top:14px">
+        <div class="note">
+          全程只在两台设备之间直连，没有服务器中转。扫码用的是手机系统相机，
+          所以<b>网页本身不需要相机权限</b>。
+        </div>
+        <button class="btn sm ghost" style="margin-top:10px"
+                data-act='{"t":"acceptAnswer"}'>扫不了？手动粘回执</button>
+      </div>
+
+      <div class="card" style="margin-top:10px">
+        <details>
+          <summary class="note" style="cursor:pointer">邀请链接（对方已经开着围响时用）</summary>
+          <div class="linkbox" style="margin-top:8px">${esc(p.url || '')}</div>
+        </details>
+      </div>
+    </div></div>`;
+}
+
+function homeHTML(){
+  const groups = RHYTHM_ORDER.map(key => {
+    const r = RHYTHM[key];
+    const games = GAME_PLUGINS.filter(p => p.rhythm.id === r.id);
+    if (!games.length) return '';
+    return `
+      <h2>${esc(r.label)}</h2>
+      <div class="note" style="margin:-6px 0 10px">${esc(r.hint)}</div>
+      <div class="grid">
+        ${games.map(p => `
+          <div class="game" data-act='{"t":"start","game":"${p.id}"}'>
+            <div class="ico">${p.icon}</div>
+            <div class="nm">${esc(p.name)}</div>
+            <div class="mt">${p.minPlayers===p.maxPlayers ? p.minPlayers+' 人' :
+              p.maxPlayers<0 ? p.minPlayers+' 人以上' : p.minPlayers+'–'+p.maxPlayers+' 人'}</div>
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+
+  return `
+    <h1>围响 GatherPop</h1>
+    <p class="sub">聚在一起不知道玩什么的时候，拿出来就能用。</p>
+
+    <div class="card" style="margin-bottom:8px">
+      <div class="row">
+        <input id="joinName" class="btn ghost" style="flex:1;min-width:120px;text-align:left"
+               placeholder="你的昵称" value="${esc(joinName)}">
+        <button class="btn primary" data-act='{"t":"create","name":"${esc(joinName||'房主')}"}'>建个房间</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm ghost" data-act='{"t":"pasteOffer"}'>有邀请码，粘进来</button>
+        <button class="btn sm ghost" data-act='{"t":"selfCheck"}'>联机自检</button>
+      </div>
+      <div class="note" style="margin-top:8px">
+        ${net
+          ? '建好房之后点「邀请玩家」，朋友用相机扫个码就进来了。<b>点对点直连，没有服务器中转。</b>'
+          : '这个浏览器不支持点对点联机，现在是单机模式 —— 一台设备上轮流玩照样可以。'}
+      </div>
+      <div class="note" style="margin-top:6px">
+        码扫不动、或者想先确认这台设备行不行，就用上面两个按钮 ——
+        <b>粘链接可以完全绕开相机</b>走完整套配对。
+      </div>
+    </div>
+
+    ${groups}
+
+    <h2>围响不做什么</h2>
+    <div class="card privacy">
+      <ul style="margin:0;padding-left:18px" class="note">
+        <li>不需要账号，不用登录</li>
+        <li>不收集任何数据，没有广告 SDK</li>
+        <li>联机走点对点，游戏数据不经过任何服务器</li>
+        <li>没有服务端，没有数据库</li>
+      </ul>
+    </div>
+  `;
+}
+
+function roomHTML(){
+  const { room } = ctrl;
+  const plugin = ctrl.plugin;
+  const view = ctrl.myView;
+
+  const members = room.members.map(m => `
+    <span class="chip ${m.connected?'':'off'}">
+      <span class="av">${esc(initials(m.name))}</span>
+      <span>${esc(m.name)}${m.isHost?' ·房主':''}</span>
+      <span class="dot"></span>
+    </span>`).join('');
+
+  // 记分牌常驻：切换游戏时它原封不动
+  const scoreRows = room.members.map(m => {
+    const v = room.scores[m.id] || 0;
+    return `<div class="srow">
+      <span class="nm">${esc(m.name)}</span>
+      <button class="btn sm ghost" data-act='{"t":"scoreAdd","member":"${m.id}","delta":-1}'>−</button>
+      <span class="val">${v}</span>
+      <button class="btn sm ghost" data-act='{"t":"scoreAdd","member":"${m.id}","delta":1}'>+</button>
+    </div>`;
+  }).join('');
+
+  const tabs = GAME_PLUGINS.map(p => {
+    const ok = ctrl.canStart(p.id);
+    return `<button class="tab ${room.currentGameId===p.id?'on':''} ${ok?'':'off'}"
+              data-act='{"t":"switch","game":"${p.id}"}'
+              title="${ok ? '' : `需要 ${p.minPlayers} 人以上`}">${p.icon} ${esc(p.name)}</button>`;
+  }).join('');
+
+  // 方案入口只在当前这款游戏支持时才出现，而且只有房主能换
+  const presetBar = (plugin && hasPresets(plugin))
+    ? `<div class="row" style="justify-content:flex-end;margin-bottom:10px">
+         <button class="btn sm ghost" data-act='{"t":"openPresets"}'>方案</button>
+       </div>`
+    : '';
+
+  const slot = (plugin && view)
+    ? presetBar + plugin.render(view, gameCtx())
+    : `<div class="note" style="text-align:center;padding:34px 0">
+         上面挑一个游戏开始。换游戏不会丢成员，记分牌也一直挂着。
+       </div>`;
+
+  const history = room.history.length
+    ? `<h2>今晚玩过</h2><div class="card hist">${room.history.slice().reverse().map(h=>{
+        const p = pluginById(h.gameId);
+        return `<div>${p?p.icon:''} ${esc(p?p.name:h.gameId)} <span class="dim">· ${esc(h.summary)}</span></div>`;
+      }).join('')}</div>`
+    : '';
+
+  return `
+    <div class="shell">
+      <div class="row" style="justify-content:space-between">
+        <button class="btn sm ghost" data-act='{"t":"goHome"}'>← 首页</button>
+        <div class="row" style="gap:8px">
+          <span class="dim" style="font-size:12px">
+            ${ctrl.mode === 'client' ? '已连上房主' : net ? '点对点' : '单机'} · ${room.members.length} 人
+          </span>
+          ${ctrl.isHost && room.members.length > 1
+            ? `<button class="btn sm ghost" data-act='{"t":"openSkip"}'>有人不在了？</button>`
+            : ''}
+          ${ctrl.isHost && net
+            ? `<button class="btn sm primary" data-act='{"t":"invite"}'>邀请玩家</button>`
+            : ''}
+        </div>
+      </div>
+
+      <div class="memberbar">${members}</div>
+      <div class="switchbar">${tabs}</div>
+
+      <div class="card slot">${slot}</div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <b style="font-size:14px">记分牌</b>
+          <button class="btn sm ghost" data-act='{"t":"resetScores"}'>清零</button>
+        </div>
+        <div class="score">${scoreRows}</div>
+        <div class="note" style="margin-top:8px">记分牌挂在房间上，换游戏不会清空。</div>
+      </div>
+
+      ${history}
+    </div>
+  `;
+}
+
+render();
+})();
+</script>
+</body>
+</html>

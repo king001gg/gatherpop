@@ -1,0 +1,13 @@
+# 全部按 LF 存、按 LF 检出。
+#
+# 这个项目在 Windows 上开发、在 Linux 上跑 CI，而 git 的 core.autocrlf 是**每台机器
+# 各自的设置** —— 不钉死的话，同一份文件在不同人那里行尾不一样，diff 里全是噪音，
+# 严重时还会把 index.html 整个标记成改写（这个文件就是全部交付物，糊一次很难看）。
+#
+# 这里写死 eol=lf，就不再看每台机器的 core.autocrlf 脸色了。
+* text=auto eol=lf
+
+# 图片这类二进制文件不参与行尾转换
+*.png binary
+*.jpg binary
+*.ico binary
