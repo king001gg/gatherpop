@@ -1,0 +1,61 @@
+name: pages
+
+# 把交付物发到 GitHub Pages：https://king001gg.github.io/gatherpop/
+#
+# 站点目录里只放 index.html 一个文件 —— 整个项目的交付物就是它，
+# test/ audit/ serve.mjs 不该出现在站点上。
+# 走 Actions 部署时 Pages 不跑 Jekyll（那是分支部署的事），所以不需要 .nojekyll。
+#
+# ⚠ 站点是公网的，跟「局域网自建服务器」不是一回事。邀请链接按 location.origin
+#   生成 —— 从公网页面建房，码里写的就是这个公网地址，两台设备都从公网取页面再
+#   点对点连。信令仍然只走二维码（URL 片段不会被发往服务器），但「公网页面访问
+#   局域网设备」正是 Chrome LNA 管的场景，见 README「待验证的风险」。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 并发部署排队而不是互相踩；已经跑起来的那次不打断
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      # 用 v5：v4 的动作运行时绑在 Node 20 上，GitHub 已经在告警
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+
+      # 站点就是这个交付物本身，所以先过一遍测试再发 ——
+      # 别把没过测试的 index.html 摆到公网上
+      - run: npm ci
+      - run: npm test
+
+      - name: 站点目录里只放交付物本身
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v5
