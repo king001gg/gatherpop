@@ -149,7 +149,9 @@ audit/mutation.mjs      ← 变异测试：往代码里注入人工缺陷，看�
 audit/probe.mjs         ← 对抗性探针：畸形报文、恶意名字、越权、泄密矩阵
 audit/verify.mjs        ← 对存活的变异逐条取证，分辨真盲区与等价变异
 serve.mjs               ← 真机联机测试用的静态服务器，零依赖
-.github/workflows/      ← CI：在 Node 20/22/24 上各跑一遍测试
+.github/workflows/
+  test.yml              ← CI：在 Node 20/22/24 上各跑一遍测试
+  mutation.yml          ← 变异测试，手动触发（跑 22 遍全量测试，不适合挂在 push 上）
 ```
 
 核心块不依赖 DOM，所以能直接在 Node 里测。游戏插件的 `render` 返回 HTML 字符串而不是操作 DOM，交互统一走 `data-act` 属性由外壳代理——这既让插件保持纯粹，也让它们可测。只有你画我猜的 `afterRender` 会碰 DOM，那是画布逼出来的唯一一道口子。

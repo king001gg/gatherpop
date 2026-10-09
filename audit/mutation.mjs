@@ -110,53 +110,66 @@ function tryMutate(mut){
   return { status: r.failed > 0 ? 'KILLED' : 'SURVIVED', failed: r.failed, raw: r.raw };
 }
 
-// 预检：锚点必须唯一，否则这条变异测的不是它想测的东西
-{
-  let bad = 0;
-  for (const mut of MUTANTS){
-    const c = original.split(mut.from).length - 1;
-    if (c !== 1){ console.log(`锚点异常：${mut.id} 出现 ${c} 次`); bad++; }
+/* 全流程包在函数里，早退一律用 return —— 这样收尾只用设 exitCode，
+   不必调 process.exit()。后者会把还没冲出去的 stdout 一起带走，
+   而失败时人正需要看那份报告。 */
+function main(){
+  // 预检：锚点必须唯一，否则这条变异测的不是它想测的东西
+  {
+    let bad = 0;
+    for (const mut of MUTANTS){
+      const c = original.split(mut.from).length - 1;
+      if (c !== 1){ console.log(`锚点异常：${mut.id} 出现 ${c} 次`); bad++; }
+    }
+    if (bad){ console.log(`\n${bad} 条锚点有问题，先修正再跑。`); process.exitCode = 1; return; }
+    console.log(`锚点预检通过（${MUTANTS.length} 条）\n`);
   }
-  if (bad){ console.log(`\n${bad} 条锚点有问题，先修正再跑。`); process.exit(1); }
-  console.log(`锚点预检通过（${MUTANTS.length} 条）\n`);
-}
 
-console.log('先确认基线是绿的…');
-const base = runTests();
-console.log(`基线：fail=${base.failed}\n`);
-if (base.failed !== 0){
-  console.log('基线不是绿的，先修好再跑变异测试。');
-  process.exit(1);
-}
-
-const rows = [];
-try {
-  for (const mut of MUTANTS){
-    process.stdout.write(`  ${mut.id.padEnd(26)} `);
-    let r;
-    try { r = tryMutate(mut); }
-    catch (e){ r = { status: 'ERROR', note: String(e.message) }; }
-    finally { writeFileSync(target, original, 'utf8'); }
-    const tag = { KILLED:'✅ 抓住', SURVIVED:'❌ 漏掉', SKIP:'⏭ 跳过', ERROR:'💥 出错' }[r.status];
-    console.log(`${tag}${r.note ? ' — ' + r.note : (r.failed ? `（${r.failed} 个测试失败）` : '（全部测试仍然通过）')}`);
-    rows.push({ ...mut, ...r });
+  console.log('先确认基线是绿的…');
+  const base = runTests();
+  console.log(`基线：fail=${base.failed}\n`);
+  if (base.failed !== 0){
+    console.log('基线不是绿的，先修好再跑变异测试。');
+    process.exitCode = 1;
+    return;
   }
-} finally {
-  writeFileSync(target, original, 'utf8');
-  console.log('\n已还原 index.html');
-}
 
-const killed = rows.filter(r => r.status === 'KILLED').length;
-const survived = rows.filter(r => r.status === 'SURVIVED').length;
-const skipped = rows.filter(r => r.status !== 'KILLED' && r.status !== 'SURVIVED').length;
-
-console.log(`\n变异得分：${killed}/${killed + survived} = ${(100 * killed / Math.max(1, killed + survived)).toFixed(1)}%`);
-if (skipped) console.log(`（另有 ${skipped} 条未能应用，见上）`);
-
-if (survived){
-  console.log('\n存活的变异 —— 这些都是测试的盲区：');
-  for (const r of rows.filter(x => x.status === 'SURVIVED')){
-    console.log(`  ❌ [${r.area}] ${r.why}`);
-    console.log(`     ${r.id}`);
+  const rows = [];
+  try {
+    for (const mut of MUTANTS){
+      process.stdout.write(`  ${mut.id.padEnd(26)} `);
+      let r;
+      try { r = tryMutate(mut); }
+      catch (e){ r = { status: 'ERROR', note: String(e.message) }; }
+      finally { writeFileSync(target, original, 'utf8'); }
+      const tag = { KILLED:'✅ 抓住', SURVIVED:'❌ 漏掉', SKIP:'⏭ 跳过', ERROR:'💥 出错' }[r.status];
+      console.log(`${tag}${r.note ? ' — ' + r.note : (r.failed ? `（${r.failed} 个测试失败）` : '（全部测试仍然通过）')}`);
+      rows.push({ ...mut, ...r });
+    }
+  } finally {
+    writeFileSync(target, original, 'utf8');    // 出了什么事都得把 index.html 还原
+    console.log('\n已还原 index.html');
   }
+
+  const killed = rows.filter(r => r.status === 'KILLED').length;
+  const survived = rows.filter(r => r.status === 'SURVIVED').length;
+  const skipped = rows.filter(r => r.status !== 'KILLED' && r.status !== 'SURVIVED').length;
+
+  console.log(`\n变异得分：${killed}/${killed + survived} = ${(100 * killed / Math.max(1, killed + survived)).toFixed(1)}%`);
+  if (skipped) console.log(`（另有 ${skipped} 条未能应用，见上）`);
+
+  if (survived){
+    console.log('\n存活的变异 —— 这些都是测试的盲区：');
+    for (const r of rows.filter(x => x.status === 'SURVIVED')){
+      console.log(`  ❌ [${r.area}] ${r.why}`);
+      console.log(`     ${r.id}`);
+    }
+  }
+
+  /* 给 CI 当门禁用：有存活、或有没跑成的，就以非 0 退出。
+     注意「存活」不一定都是洞 —— 也可能是语义等价的变异（那种该从 MUTANTS 里删掉，
+     而不是把这里放宽）。所以这道门是**手动触发**的，红了要人来判断。 */
+  process.exitCode = (survived || skipped) ? 1 : 0;
 }
+
+main();

@@ -1,0 +1,33 @@
+name: mutation
+
+# 变异测试：往 index.html 里注入人工缺陷，看测试抓不抓得住。
+# 这是唯一能衡量「测试**有效性**」的东西 —— `npm test` 绿只说明代码被执行过，
+# 变异得分才说明断言真的在把关。存活的每一条都是测试的盲区。
+#
+# 故意**不**挂在 push 上：一次要跑 22 遍全量测试，比常规 CI 慢一个数量级，
+# 而它盯的东西（断言有没有在把关）不会因为一次 push 就退化 —— 它是在
+# 「加了一款新游戏」「改了 viewFor」之后才需要重新看一眼。
+# 想定期兜底的话，把下面的 schedule 取消注释。
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '17 3 * * 1'      # 每周一 03:17 UTC。错开整点，别跟别人挤
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    steps:
+      # 用 v5：v4 的动作运行时绑在 Node 20 上，GitHub 已经在告警
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # 单版本即可 —— 这里量的是断言的敏感度，不随 Node 版本变
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # 脚本自己会：先确认基线是绿的 → 锚点预检 → 逐条注入（每条之后都把
+      # index.html 还原）→ 打印变异得分。有存活或没跑成的，以非 0 退出。
+      - run: node audit/mutation.mjs
