@@ -48,7 +48,7 @@ function boot(){
   const factory = new Function(
     'RTCPeerConnection', 'BroadcastChannel', 'location', 'setTimeout', 'clearTimeout',
     coreSrc + '\n' + netSrc +
-    '\n;return { GP, WebRtcTransport, waitForIce, parseCandidates, relaySignal, onRelayedSignal };'
+    '\n;return { GP, WebRtcTransport, waitForIce, parseCandidates, trimCandidates, relaySignal, onRelayedSignal };'
   );
   return factory(FakePeerConnection, FakeBroadcastChannel,
                  { origin:'https://x.test', pathname:'/' }, setTimeout, clearTimeout);
@@ -488,4 +488,103 @@ test('接上了就不再报 timeout —— 定时器在通道打开时就该收�
 
   await new Promise(r => setTimeout(r, 60));   // 越过 connectTimeoutMs 再看
   assert.deepEqual(seen, [], '通了就不该再冒 timeout 出来');
+});
+
+/* ─────────────── STUN：绕开「组播被禁」那条唯一的退路 ───────────────
+   主机候选全是 mDNS 假名（实测），局域网直连要靠 WiFi 组播解析名字。组播被禁的
+   网络下这条路彻底没有 —— srflx 候选走单播，是唯一的第二条路。所以「默认带上
+   STUN」这件事必须钉住：谁把它改回 []，真机上就又只剩一条死路，而本地测试全绿。 */
+
+test('★ 默认带上 STUN，而且真建连接时用的就是它', async () => {
+  const { WebRtcTransport } = boot();
+  const net = new WebRtcTransport();
+  assert.ok(net.iceServers.length > 0, '默认得有外部候选来源 —— 不然组播一禁就全无退路');
+
+  await net.hostOffer();
+  const cfg = [...sessionHost.values()].pop().config;
+  assert.ok((cfg.iceServers || []).length > 0,
+    '★ 光存在字段上没用，建 RTCPeerConnection 时得真的传进去');
+});
+
+test('显式传 [] 就是纯局域网 —— 一条外部请求都不发', async () => {
+  const { WebRtcTransport } = boot();
+  const net = new WebRtcTransport({ iceServers: [] });
+  assert.deepEqual(net.iceServers, [], '这是留给「不碰外部服务器」那条路的开关');
+
+  await net.hostOffer();
+  assert.deepEqual([...sessionHost.values()].pop().config.iceServers, []);
+});
+
+/* ─────────────── 候选裁剪：二维码长度是硬约束 ───────────────
+   下面这份 SDP 是**真机上实测出来的形状**（Edge 收集到的 5 条，共 681 字符）。
+   全带上，邀请码 822 字符 → v23；裁完 748 字符 → v22。
+
+   裁错了单测抓不到 —— 假 PC 不解析 SDP，把它原样透传就「通过」了。
+   所以这里逐条钉住裁剪后的形状，再用真 WebRTC 端到端验一次。 */
+
+const SDP_FULL = [
+  'v=0',
+  'a=candidate:1 1 udp 2113937151 3fa7bc81-55a7-496e-aeec-a98fce9d2e28.local 59231 typ host generation 0',
+  'a=candidate:2 1 udp 2113939711 eb8480bf-a255-492b-9403-cc1d6b4429cf.local 59232 typ host generation 0',
+  // 双栈机器会再给一条 IPv6 的主机候选 —— 它地址里带冒号，是裁剪时最容易误伤的一条
+  'a=candidate:6 1 udp 2113937150 240a:42ca:6600:36e::5 59233 typ host generation 0',
+  'a=candidate:3 1 udp 1677729535 223.160.234.94 55109 typ srflx raddr 0.0.0.0 rport 0 generation 0',
+  'a=candidate:4 1 udp 1677732095 240a:42ca:6600:36e:cc8a:1b40:feeb:7955 59232 typ srflx raddr :: rport 0 generation 0',
+  'a=candidate:5 1 udp 1677729535 223.160.234.94 19731 typ srflx raddr 0.0.0.0 rport 0 generation 0',
+].join('\n');
+
+test('★ 裁剪一条主机候选都不动 —— 局域网直连全指靠它们', () => {
+  const { trimCandidates, parseCandidates } = boot();
+  const hosts = parseCandidates(trimCandidates(SDP_FULL)).filter(c => c.type === 'host');
+  /* 3 条 = 两条 mDNS + 一条 IPv6。**IPv6 那条是特意放这儿盯着的**：
+     它的地址里带冒号，裁剪逻辑里「有 v4 srflx 就不带 v6」那条一旦从 srflx
+     扩大到所有候选，就会把它顺手裁掉 —— 而 IPv6 网络下那正是局域网那条路。
+     变异测试逮到过这个盲区，所以这条数据不能再少。 */
+  assert.equal(hosts.length, 3, '★ 主机候选少了，局域网那条路就断了');
+  assert.ok(hosts.some(c => c.addr.includes(':')), '★ IPv6 的主机候选也得原样留着');
+});
+
+test('★ 同一地址的 srflx 只留一条', () => {
+  const { trimCandidates, parseCandidates } = boot();
+  const srflx = parseCandidates(trimCandidates(SDP_FULL)).filter(c => c.type === 'srflx');
+  const v4 = srflx.filter(c => !c.addr.includes(':'));
+  assert.equal(v4.length, 1, '★ 223.160.234.94 出了两条（同一张网卡两个本地端口），留一条');
+  assert.equal(v4[0].addr, '223.160.234.94');
+});
+
+test('★ 有 IPv4 的 srflx 就不带 IPv6 的 —— 一条顶三条', () => {
+  const { trimCandidates, parseCandidates } = boot();
+  const srflx = parseCandidates(trimCandidates(SDP_FULL))
+    .filter(c => c.type === 'srflx').map(c => c.addr);
+  assert.deepEqual(srflx, ['223.160.234.94'],
+    '★ 只留一条 IPv4 srflx；IPv6 的（39 字符，一条顶三条）裁掉');
+});
+
+test('★ 只有 IPv6 的 srflx 时不能把它裁掉 —— 那是唯一的外网路径', () => {
+  const { trimCandidates, parseCandidates } = boot();
+  const onlyV6 = SDP_FULL.split('\n').filter(l => !/223\.160\.234\.94/.test(l)).join('\n');
+  const srflx = parseCandidates(trimCandidates(onlyV6)).filter(c => c.type === 'srflx');
+  assert.equal(srflx.length, 1, '★ IPv6-only 的网络下，裁掉它等于把退路关了');
+  assert.match(srflx[0].addr, /^240a:/);
+});
+
+test('裁剪只碰 srflx —— 主机候选那条 IPv6 的别误伤', () => {
+  const { trimCandidates, parseCandidates } = boot();
+  const hosts = parseCandidates(trimCandidates(SDP_FULL)).filter(c => c.type === 'host');
+  assert.equal(hosts.filter(c => c.addr.includes(':')).length, 1,
+    '★ 「有 v4 srflx 就不带 v6」只适用于 srflx，扩到主机候选上就是 IPv6 网络下断网');
+});
+
+test('没有 srflx 时原样返回 —— 不打乱本来就没问题的东西', () => {
+  const { trimCandidates } = boot();
+  const noSrflx = SDP_FULL.split('\n').filter(l => !/srflx/.test(l)).join('\n');
+  assert.equal(trimCandidates(noSrflx), noSrflx);
+  assert.equal(trimCandidates(''), '');
+});
+
+test('裁剪后剩下的那几条，字段是完整的', () => {
+  const { trimCandidates, parseCandidates } = boot();
+  for (const c of parseCandidates(trimCandidates(SDP_FULL))){
+    assert.ok(c.addr && Number.isInteger(c.port) && c.port > 0 && c.type, `候选不完整: ${c.raw}`);
+  }
 });

@@ -87,7 +87,31 @@ const MUTANTS = [
     } else {
       toast('没连上：' + hint);` },
   { id:'hint-vague', area:'连不通', why:'候选全是 mDNS 假名时也只说含糊的「网络有问题」',
-    from:'  if (mdns === cands.length){', to:'  if (false){' },
+    from:'  if (hosts.length && mdns === hosts.length){', to:'  if (false){' },
+  { id:'hint-ignores-srflx', area:'连不通', why:'有外网候选还连不上时，仍往 mDNS/客户端隔离上指',
+    from:'  if (srflx.length){', to:'  if (false){' },
+
+  // ── STUN：绕开「组播被禁」的唯一退路 ──
+  // 主机候选全是 mDNS 假名，局域网直连得靠 WiFi 组播。组播一禁就只剩 srflx。
+  // 这三条任何一条被改回去，真机上就回到「怎么都连不上，而且本地全绿」。
+  { id:'no-stun-default', area:'STUN', why:'默认不带 STUN，只剩组播一条路',
+    from:'  constructor({ iceServers = STUN_SERVERS, gatherTimeoutMs = 2500, connectTimeoutMs = 20000 } = {}){',
+    to:'  constructor({ iceServers = [], gatherTimeoutMs = 2500, connectTimeoutMs = 20000 } = {}){' },
+  { id:'stun-not-passed-to-pc', area:'STUN', why:'配置存在字段上却没传给 RTCPeerConnection（等于没配）',
+    from:'    const pc = new RTCPeerConnection({ iceServers: this.iceServers });',
+    to:'    const pc = new RTCPeerConnection({ iceServers: [] });' },
+
+  // ── 候选裁剪：直接决定二维码是 v21 还是 v23 ──
+  // 裁狠了会断掉某条连通路径，裁少了二维码变密扫不动。两头都得有测试兜着。
+  { id:'trim-keeps-all-srflx', area:'裁剪', why:'srflx 一条不裁，二维码白白变密（v22 → v23）',
+    from:'    if ((v4srflx && c.addr.includes(\':\')) || seen.has(c.addr)){ drop.add(c.raw); continue; }',
+    to:'    if (false){ drop.add(c.raw); continue; }' },
+  { id:'trim-drops-hosts', area:'裁剪', why:'把主机候选也裁了 —— 局域网那条路直接断掉',
+    from:'    if (c.type !== \'srflx\') continue;',
+    to:'    if (false) continue;' },
+  { id:'trim-always-drops-v6', area:'裁剪', why:'不管有没有 IPv4，一律把 IPv6 的 srflx 裁掉（纯 IPv6 网络下退路全无）',
+    from:'    if ((v4srflx && c.addr.includes(\':\'))',
+    to:'    if ((c.addr.includes(\':\'))' },
 
   // ── 入站报文的守卫（本轮审计新加的） ──
   { id:'no-msg-guard', area:'协议健壮性', why:'不挡住非对象报文（对端发 `null` 就崩）',

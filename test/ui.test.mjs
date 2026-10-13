@@ -956,3 +956,27 @@ test('★ 候选全是 mDNS 假名时，说清是「要靠组播」而不是含�
   assert.match(guest.html(), /组播/, '★ 得说清它靠什么才能通');
   assert.match(guest.html(), /客户端隔离/, '★ 得指出路由器上那个具体的开关');
 });
+
+test('★ 外网地址拿到了却还是连不上时，说的是「接到同一个 WiFi」而不是 mDNS', async () => {
+  /* 两条路都要能分清。有 srflx 还连不上，问题就不再是组播/客户端隔离，
+     而是两台设备卡在各自的 NAT 后面 —— 这时候叫用户去关路由器的客户端隔离
+     是白折腾，得叫他把两台设备接到同一个 WiFi 上。 */
+  const bus = makeBus();
+  const host = boot({ BroadcastChannel: bus });
+  host.click({ t:'create', name:'房主' });
+  host.click({ t:'invite' });
+  await until(() => grabUrl(host.html(), 'o'));
+
+  const guest = boot({ BroadcastChannel: bus, hash: hashOf(grabUrl(host.html(), 'o')) });
+  await until(() => grabUrl(guest.html(), 'a'));
+
+  const pc = [...sessionClient.values()].pop();
+  pc.localDescription = { type:'answer', sdp: 'ANSWER:S1\n'
+    + 'a=candidate:1 1 udp 2113937151 71fffd57-3ef7-4fca-978c-6c046f90b977.local 60354 typ host generation 0\n'
+    + 'a=candidate:2 1 udp 1677729535 203.0.113.7 41234 typ srflx raddr 10.0.0.5 rport 60354 generation 0' };
+  pc._setConnState('failed');
+
+  const h = guest.html();
+  assert.match(h, /同一个 WiFi/, '★ 有外网候选时该往这个方向指');
+  assert.doesNotMatch(h, /mDNS 假名/, '★ 这条路上不该再提 mDNS，那是另一回事');
+});

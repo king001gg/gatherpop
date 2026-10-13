@@ -3685,6 +3685,7 @@ function parseCandidates(sdp){
     if (f.length < 8) continue;                 // 字段不齐的丢掉，别让诊断自己崩
     const addr = f[4];
     out.push({
+      raw: line,
       addr,
       port: Number(f[5]),
       proto: f[2],
@@ -3696,13 +3697,55 @@ function parseCandidates(sdp){
 }
 
 /**
+ * 二维码的长度是硬约束（v21 往上就难扫了），所以候选得挑着带。
+ *
+ * 这里只做两件 ICE 里公认的卫生工作，都很保守：
+ *   · 同一地址的 srflx 只留一条 —— 那是同一张网卡在不同本地端口上的映射，
+ *     打洞留一条就够（实测一台机器上同一个公网地址会出两条）
+ *   · 有 IPv4 的 srflx 就不带 IPv6 的 —— 同一个 WiFi 下两台手机靠的是前者；
+ *     而 IPv6 地址特别长（39 字符 vs 15），一条顶三条
+ * 主机候选**一条都不动** —— 局域网直连全指靠它们。
+ */
+function trimCandidates(sdp){
+  const text = String(sdp || '');
+  const cands = parseCandidates(text);
+  const v4srflx = cands.some(c => c.type === 'srflx' && !c.addr.includes(':'));
+  const drop = new Set();
+  const seen = new Set();
+
+  for (const c of cands){
+    if (c.type !== 'srflx') continue;
+    if ((v4srflx && c.addr.includes(':')) || seen.has(c.addr)){ drop.add(c.raw); continue; }
+    seen.add(c.addr);
+  }
+  if (!drop.size) return text;
+  return text.split(/\r?\n/).filter(l => !drop.has(l)).join('\n');
+}
+
+/**
  * 点对点传输。星型拓扑：每个加入端只跟房主建一条连接，加入端之间不互联。
  * RoomController 只按 Transport 接口说话，完全不知道底下是 WebRTC 还是单机。
  */
+/* 公共 STUN。**这不是中继** —— 数据和聊天始终在两台设备之间直连，STUN 只回答
+   一个问题：「从你那个位置看，我的外网地址是什么」。
+
+   为什么得有它：浏览器不肯把真实局域网 IP 交给页面，**主机候选全是 mDNS 假名**
+   （一串随机 .local，实测过），两台设备只能靠 WiFi 组播互相解析对方那个名字。
+   组播被禁的网络（访客网络、开了「客户端隔离 / AP 隔离」的路由器）下这条路直接
+   死掉 —— 而 STUN 给出的 srflx 候选是公网 IP:端口，走单播，不依赖组播。
+
+   代价照实说：这会联系外部服务器，并把本机的外网地址告诉它（除此之外不带任何
+   房间内容、昵称、游戏数据）。连不上外网时它就是白配一场 —— 多等一会儿，
+   拿不到 srflx，局域网那条路照旧。 */
+const STUN_SERVERS = [
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:stun.l.google.com:19302' },
+];
+
 class WebRtcTransport extends Transport {
-  constructor({ iceServers = [], gatherTimeoutMs = 2500, connectTimeoutMs = 20000 } = {}){
+  constructor({ iceServers = STUN_SERVERS, gatherTimeoutMs = 2500, connectTimeoutMs = 20000 } = {}){
     super();
-    this.iceServers = iceServers;          // 留空 = 只在局域网内连，不借助任何外部服务器
+    this.iceServers = iceServers;          // 传 [] 就是纯局域网，一条外部请求都不发
     this.gatherTimeoutMs = gatherTimeoutMs;
     this.connectTimeoutMs = connectTimeoutMs;
     this._peers = new Map();               // peerId -> { pc, dc, open, queue, timer }
@@ -3846,7 +3889,8 @@ class WebRtcTransport extends Transport {
       for (const fn of this._stateFns) fn(peerId, 'timeout');
       this.discard(peerId);
     }, this.connectTimeoutMs);
-    return { peerId, payload: await packSignal({ pid:peerId, sdp: entry.pc.localDescription.sdp }) };
+    return { peerId, payload: await packSignal({ pid:peerId,
+                                                 sdp: trimCandidates(entry.pc.localDescription.sdp) }) };
   }
 
   /** 收到加入端扫回来的回执，接上。 */
@@ -3870,7 +3914,8 @@ class WebRtcTransport extends Transport {
     await entry.pc.setLocalDescription(await entry.pc.createAnswer());
     await waitForIce(entry.pc, this.gatherTimeoutMs);
 
-    return { peerId: pid, payload: await packSignal({ pid, sdp: entry.pc.localDescription.sdp }) };
+    return { peerId: pid, payload: await packSignal({ pid,
+                                                      sdp: trimCandidates(entry.pc.localDescription.sdp) }) };
   }
 
   /** 已经连上的对端数，用来给用户一句「还差几步」 */
@@ -4087,28 +4132,38 @@ async function startJoining(payload){
 const JOIN_STALL_MS = 20000;   // 加入端从 ICE 开始动到彻底没戏，等这么久
 
 /* ── 连不通时到底该怪谁 ──
-   这是这个 App 最要紧的一句人话。iceServers 是空的（不借助任何外部服务器，
-   这是隐私设计的一部分），于是两台设备只能靠**局域网里的主机候选**直连。
-   而浏览器不肯把真实 IP 交出来 —— 实测过两个来源（公网 HTTPS 和局域网 HTTP），
-   收集到的候选**清一色是 mDNS 假名**（一串随机 .local，见 audit 里的记录）。
-   这意味着两台设备之间必须靠 WiFi 的组播，把对方那个随机名字解析出来。
-
-   访客网络、开了「客户端隔离 / AP 隔离」的路由器、以及两台设备压根不在同一个
-   WiFi 里，都会让这一步无声无息地失败 —— 不报错，只是永远连不上。
+   这是这个 App 最要紧的一句人话。浏览器不肯把真实局域网 IP 交给页面 ——
+   实测过两个来源（公网 HTTPS 和局域网 HTTP），主机候选**清一色是 mDNS 假名**
+   （一串随机 .local）。所以路只有两条：
+     · 主机候选 —— 靠 WiFi 组播把对方那个随机名字解析出来
+     · STUN 问来的外网候选（srflx）—— 走单播，绕开组播被禁的网络
+   两条都断了才是真的没救，而**两条断的原因完全不同**，修法也不同。
    一句泛泛的「网络有问题」帮不到人，所以这里按实际收集到的候选分情况说。 */
 function noLinkHint(peerId){
   const cands = net.candidatesFor(peerId);
-  const mdns = cands.filter(c => c.mdns).length;
+  const hosts = cands.filter(c => c.type === 'host');
+  const srflx = cands.filter(c => c.type === 'srflx');
+  const mdns  = hosts.filter(c => c.mdns).length;
 
   if (!cands.length){
-    return '两台设备之间没能建起直连，而且这张邀请里一个局域网地址都没收集到。'
+    return '两台设备之间没能建起直连，而且这张邀请里一个地址都没收集到。'
          + '先确认两台设备连的是同一个 WiFi。';
   }
-  if (mdns === cands.length){
-    return `两台设备之间没能建起直连。这张邀请里的 ${cands.length} 个局域网地址`
+  /* 外网地址拿到了却还是碰不到面：两台设备卡在各自的 NAT 后面。
+     同一个 WiFi 下这多半是路由器不支持回流（hairpin）；不同网络那就必须中继，
+     而这里没有中继 —— 两种情况都是「接到同一个 WiFi 再试」。 */
+  if (srflx.length){
+    return '两台设备之间没能建起直连。双方的外网地址都问到了，但连不到彼此 —— '
+         + '多半是两台设备不在同一个 WiFi 里（有一台走了流量？），'
+         + '或者路由器的 NAT 不支持自己人访问自己的外网地址。'
+         + '把两台设备接到同一个 WiFi 再试。';
+  }
+  if (hosts.length && mdns === hosts.length){
+    return `两台设备之间没能建起直连。这张邀请里的 ${hosts.length} 个局域网地址`
          + '全是 mDNS 假名（浏览器不肯暴露真实 IP），得靠同一个 WiFi 里的组播'
-         + '互相解析出对方那个随机名字。访客网络、或者开了「客户端隔离 / AP 隔离」'
-         + '的路由器会把组播挡掉 —— 那种网络下两台设备永远看不见对方，'
+         + '互相解析出对方那个随机名字 —— 访客网络，或者开了「客户端隔离 / AP 隔离」'
+         + '的路由器会把组播挡掉。本来还能靠 STUN 问来的外网地址绕过去，'
+         + '可这份连一条外网候选都没有（是没连上外网，还是 STUN 也被挡了？）。'
          + '换一个网络，或者关掉路由器的客户端隔离再试。';
   }
   return '两台设备之间没能建起直连。确认两台设备在同一个 WiFi 里，'
@@ -4696,7 +4751,8 @@ async function runSelfCheck(){
   if (typeof RTCPeerConnection === 'function'){
     let pc = null;
     try {
-      pc = new RTCPeerConnection({ iceServers: [] });
+      // 用**实际配对时那套配置**量，不然量出来的候选和真配对时的不是一回事
+      pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
       pc.createDataChannel('probe');
       await pc.setLocalDescription(await pc.createOffer());
       await waitForIce(pc, 3000);
@@ -4705,6 +4761,7 @@ async function runSelfCheck(){
       const cands = parseCandidates(sdp);
       const hosts = cands.filter(c => c.type === 'host');
       const mdns  = cands.filter(c => c.mdns);
+      const srflx = cands.filter(c => c.type === 'srflx');
 
       add('收集到的候选', cands.length ? cands.length + ' 个' : '一个都没有',
           cands.length ? 'ok' : 'bad');
@@ -4714,11 +4771,17 @@ async function runSelfCheck(){
         add('mDNS 假名候选', mdns.length
             ? mdns.length + ' 个 —— 要靠组播解析，组播被禁的网络会卡在这'
             : '没有', mdns.length ? 'warn' : 'ok');
+        /* 这一行是这次加 STUN 的**全部理由**：srflx 是公网 IP:端口，走单播，
+           不依赖组播。有它，就有了一条绕开「组播被禁」的路。 */
+        add('外网候选（STUN）', srflx.length
+            ? srflx.length + ' 个 —— 走单播，组播被禁时靠它'
+            : '没有 —— STUN 没答上来（没外网？被墙？），只剩局域网那条路',
+            srflx.length ? 'ok' : 'warn');
       }
 
       // 拿这份真 SDP 量一量二维码到底多密
       const url = signalUrl(currentBase(), 'o',
-                           await packSignal({ pid:'p1', sdp }));
+                           await packSignal({ pid:'p1', sdp: trimCandidates(sdp) }));
       add('邀请码长度', url.length + ' 字符');
       try {
         const q = QRCode.encode(url);
@@ -4885,8 +4948,12 @@ function inviteHTML(){
 
       <div class="card" style="margin-top:14px">
         <div class="note">
-          全程只在两台设备之间直连，没有服务器中转。扫码用的是手机系统相机，
-          所以<b>网页本身不需要相机权限</b>。
+          房间、昵称、聊天、游戏数据<b>只在两台设备之间直连，没有服务器中转</b>，
+          也不会存到任何地方。扫码用的是手机系统相机，所以网页本身不需要相机权限。
+        </div>
+        <div class="note" style="margin-top:6px">
+          唯一一次对外联系：为了在局域网连不通时还有条退路，会向公共 STUN 服务器
+          问一句双方的外网地址（<b>只问地址，不带房间里的任何内容</b>）。
         </div>
         <button class="btn sm ghost" style="margin-top:10px"
                 data-act='{"t":"acceptAnswer"}'>扫不了？手动粘回执</button>
