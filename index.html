@@ -3874,11 +3874,18 @@ class WebRtcTransport extends Transport {
 /* ---------------- 跨标签页转送 ----------------
    房主用系统相机扫回执，回执会打开一个新标签页。新标签页自己没法完成握手
    （发出 offer 的 RTCPeerConnection 在原来那页），所以它把回执广播回去。
-   同源页面之间用 BroadcastChannel 直连，不走网络。 */
-const SIGNAL_CHANNEL = 'gatherpop-signal';
+   同源页面之间用 BroadcastChannel 直连，不走网络。
 
-/** 转送并等一声回执。resolve(false) 说明原来那页已经不在了。 */
-function relaySignal(payload){
+   这里唯一容易搞错的是 ack 的含义：**它是「这份回执被用上了」，不是「有页面在听」。**
+   原来 ack 在调用处理函数**之前**就无条件发出去，于是一个手上已经没有邀请的页面
+   （刷新过、或者浮层被关掉）也会应声，转送页拿到 ack 就写「连接应该已经接上了」——
+   用户对着一个假成功干等，房主那边其实什么都没发生。 */
+const SIGNAL_CHANNEL = 'gatherpop-signal';
+const RELAY_ACK_MS = 1500;   // 等一声回执；没等到就老实说没送到
+
+/** 转送并等一声回执。resolve(false) = 这份回执没被任何人用上
+    （没人听，或者听了但用不上）。 */
+function relaySignal(payload, waitMs = RELAY_ACK_MS){
   if (typeof BroadcastChannel !== 'function') return Promise.resolve(false);
   const ch = new BroadcastChannel(SIGNAL_CHANNEL);
   const id = Math.random().toString(36).slice(2, 10);
@@ -3888,18 +3895,22 @@ function relaySignal(payload){
     const finish = (ok) => { if (done) return; done = true; ch.close(); resolve(ok); };
     ch.onmessage = (e) => { if (e.data && e.data.kind === 'ack' && e.data.id === id) finish(true); };
     ch.postMessage({ kind:'answer', payload, id });
-    setTimeout(() => finish(false), 800);   // 没等到 ack 就老实说没送到
+    setTimeout(() => finish(false), waitMs);
   });
 }
 
-/** 房主侧：听新标签页转回来的回执 */
+/** 房主侧：听新标签页转回来的回执。
+    fn 返回 false（或抛错）= 这份回执我没用上 —— 那就**不能应 ack**。
+    应了，转送页就会报成功；不应，它才会老实说没送到，并指人去走「手动粘回执」。 */
 function onRelayedSignal(fn){
   if (typeof BroadcastChannel !== 'function') return () => {};
   const ch = new BroadcastChannel(SIGNAL_CHANNEL);
-  ch.onmessage = (e) => {
+  ch.onmessage = async (e) => {
     if (!e.data || e.data.kind !== 'answer') return;
-    ch.postMessage({ kind:'ack', id: e.data.id });   // 先应一声，让对面知道有人接
-    fn(e.data.payload);
+    let took = false;
+    try { took = (await fn(e.data.payload)) !== false; }
+    catch { took = false; }
+    if (took) ch.postMessage({ kind:'ack', id: e.data.id });
   };
   return () => ch.close();
 }
@@ -4029,15 +4040,26 @@ function payloadFromPaste(text){
   return t.replace(/^[oa]=/, '');
 }
 
-/** 房主：拿到回执（扫出来的，或者手动粘进来的） */
+/** 房主：拿到回执（扫出来的，或者手动粘进来的）。
+    返回 true 才算真的接上 —— 转送页要靠这个返回值决定该不该报成功。 */
 async function acceptAnswer(payload){
-  if (!net || !pairing) return;
+  if (!net) return false;
+  /* 邀请不在了还收到回执：页面刷新过，或者邀请浮层已经被关掉。原来的 RTCPeerConnection
+     随页面一起没了，这份回执已经无从接起 —— **必须说出来**。原来这里是一句静默 return，
+     于是转送页报「已接上」、房主这边毫无反应，用户对着一个假成功干等。 */
+  if (!pairing){
+    toast('这张邀请已经失效了（页面刷新过）。重新点一次「邀请玩家」生成新码。');
+    return false;
+  }
   try {
     await net.hostAccept(payload.trim());
     pairing = null;
     toast('接上了，等人进房间');
+    render();
+    return true;
   } catch (err){
     toast(err.message || '回执读不出来');
+    return false;
   }
   render();
 }
@@ -4081,7 +4103,11 @@ if (net){
   // 它会把刚发出去的回执又「收」回来当成回执，然后自己给自己回一声 ack，
   // 页面就谎报转送成功了。转送页不是房主，没有理由听。
   if (!bootSignal || bootSignal.kind !== 'a'){
-    onRelayedSignal((payload) => { if (pairing) acceptAnswer(payload); });
+    /* 把 acceptAnswer 的成败**原样返回**：它返回 false，onRelayedSignal 就不应那声
+       ack，转送页于是老实报「没送到」，而不是让用户对着一个假成功干等。
+       「邀请已失效」那句话由 acceptAnswer 自己说 —— 手动粘回执走的是同一个入口，
+       两条路共用一句提示，不用在这儿再抄一遍。 */
+    onRelayedSignal((payload) => acceptAnswer(payload));
   }
 
   // 底层连接真的失败了就说出来 —— 不然用户只看到「等人进房间」干等
@@ -4284,20 +4310,23 @@ function render(){
 function relayHTML(){
   const st = relayState || { status:'sending' };
 
+  /* ok 只在房主那边**真的把回执用上了**之后才会出现（对面应了 ack）。
+     所以这里可以说得肯定一点，不必再用「应该」这种模棱两可的说法。 */
   const face = {
     sending: ['…', '正在把回执转回原来的页面'],
-    ok:      ['✓', '回执已转回原来的页面'],
-    lost:    ['!', '没找到原来的房间页'],
+    ok:      ['✓', '回执已交到房主那一页'],
+    lost:    ['!', '这一页没能把回执送到房主手里'],
   }[st.status];
 
   let note;
   if (st.status === 'sending'){
     note = '别关这一页，马上就好。';
   } else if (st.status === 'ok'){
-    note = '连接应该已经接上了。<b>这一页可以直接关掉</b>，回到刚才那个房间页。';
+    note = '房主那边正在接。<b>这一页可以直接关掉</b>，回到刚才那个房间页。';
   } else {
-    note = '多半是那个页面已经关了、刷新了，或者扫回执的不是同一台设备。'
-         + '让房主重新点一次「邀请玩家」，用<b>同一台设备、同一个浏览器</b>扫回执。';
+    note = '可能是那个页面已经被刷新或关掉了，也可能是扫回执的不是同一台设备、同一个浏览器。'
+         + '最稳妥的是让房主重新点一次「邀请玩家」出张新码，再用<b>同一台设备、同一个浏览器</b>扫回执。'
+         + '（浮层里那个「扫不了？手动粘回执」同样要求房主那一页没被刷新过。）';
   }
 
   return `

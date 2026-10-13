@@ -24,15 +24,41 @@ const netSrc  = html.match(/\/\/ ==== NET:BEGIN ====([\s\S]*?)\/\/ ==== NET:END 
 
 /* ─────────────── 装载真正的代码 ─────────────── */
 
+/* 同源标签页之间的转送用 BroadcastChannel。Node 自带的那个会把事件循环吊住
+   （进程不退出），测试里换成同进程的假实现：同名频道互投，且真的异步投递 ——
+   同步投递会让「先 post 还是先挂 onmessage」这种顺序问题消失，测了等于没测。 */
+const channels = new Map();
+class FakeBroadcastChannel {
+  constructor(name){
+    this.name = name; this.onmessage = null; this.closed = false;
+    if (!channels.has(name)) channels.set(name, new Set());
+    channels.get(name).add(this);
+  }
+  postMessage(data){
+    if (this.closed) return;
+    for (const other of [...channels.get(this.name)]){
+      if (other === this || other.closed) continue;
+      queueMicrotask(() => { if (!other.closed && other.onmessage) other.onmessage({ data }); });
+    }
+  }
+  close(){ this.closed = true; channels.get(this.name).delete(this); }
+}
+
 function boot(){
   const factory = new Function(
     'RTCPeerConnection', 'BroadcastChannel', 'location', 'setTimeout', 'clearTimeout',
-    coreSrc + '\n' + netSrc + '\n;return { GP, WebRtcTransport, waitForIce, parseCandidates };'
+    coreSrc + '\n' + netSrc +
+    '\n;return { GP, WebRtcTransport, waitForIce, parseCandidates, relaySignal, onRelayedSignal };'
   );
-  return factory(FakePeerConnection, undefined, { origin:'https://x.test', pathname:'/' }, setTimeout, clearTimeout);
+  return factory(FakePeerConnection, FakeBroadcastChannel,
+                 { origin:'https://x.test', pathname:'/' }, setTimeout, clearTimeout);
 }
 
-const { GP, WebRtcTransport, waitForIce, parseCandidates } = boot();
+const { GP, WebRtcTransport, waitForIce, parseCandidates, relaySignal, onRelayedSignal } = boot();
+
+/** 转送这条路：房主扫回执 → 回执打开的新页面把载荷广播回房主那一页。
+    这里用一小段等待，别把测试拖成 1.5 秒一次。 */
+const RELAY_WAIT = 60;
 
 const tick = (ms = 5) => new Promise(r => setTimeout(r, ms));
 
@@ -385,4 +411,43 @@ test('同一状态不重复报 —— dc.onclose 和 pc 的连接状态会各响
   hostT._peerState(peerId, true);
 
   assert.deepEqual(seen, [[peerId, false], [peerId, true]]);
+});
+
+/* ─────────────── 跨标签页转送：ack 到底在确认什么 ───────────────
+   ack 必须表示「这份回执被房主用上了」，而不是「有个页面在听」。
+   这两者分不清，用户就会对着转送页上的「已接上」干等，而房间里始终只有自己。 */
+
+const RELAY_PAYLOAD = 'ANSWER-1';
+
+test('转送：房主真的收下了，转送页才拿到成功', async () => {
+  const got = [];
+  const off = onRelayedSignal(async (p) => { got.push(p); return true; });
+  assert.equal(await relaySignal(RELAY_PAYLOAD, 60), true);
+  assert.deepEqual(got, [RELAY_PAYLOAD], '载荷要原样交到房主手里');
+  off();
+});
+
+test('★ 房主用不上这份回执时，转送页必须拿到失败，而不是成功', async () => {
+  // 房主那一页刷新过：手上已经没有 pairing 了，回调返回 false。
+  // 以前 ack 在调用回调之前就无条件发出去，于是这里会谎报「已接上」。
+  const off = onRelayedSignal(() => false);
+  assert.equal(await relaySignal('ANSWER-STALE', 60), false,
+    '★ 用不上就不该应 ack —— 应了转送页就报成功，用户对着假成功干等');
+  off();
+});
+
+test('转送：房主接的时候抛了异常，同样算没送到', async () => {
+  const off = onRelayedSignal(() => { throw new Error('这张邀请已经过期了'); });
+  assert.equal(await relaySignal('ANSWER-BAD', 60), false);
+  off();
+});
+
+test('转送：原来那页已经不在了，等不到回执就说没送到', async () => {
+  assert.equal(await relaySignal('ANSWER-NOBODY', 60), false);
+});
+
+test('转送：没收到 ack 就把频道收掉，不留着下一次继续乱应声', async () => {
+  assert.equal(await relaySignal('ANSWER-X', 30), false);
+  // 第二个转送页照样没人在听 —— 上一页的频道要是没关，它这会儿还会来应一声
+  assert.equal(await relaySignal('ANSWER-Y', 30), false);
 });

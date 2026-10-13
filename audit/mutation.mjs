@@ -48,6 +48,23 @@ const MUTANTS = [
   { id:'claim-live-seat', area:'认座/授权', why:'允许顶掉一个有活人的座位',
     from:'if (this._isSeatLive(m.id)) return null;', to:'' },
 
+  // ── 跨标签页转送：ack 的含义 ──
+  // ack 必须等于「这份回执被房主用上了」。退化成「有页面在听」，转送页就会
+  // 在一个房间根本没接上的时候报「已接上」—— 用户对着假成功干等。
+  { id:'relay-ack-unconditional', area:'转送', why:'不管用没用上都先应一声（转送页于是会谎报成功）',
+    from:`    let took = false;
+    try { took = (await fn(e.data.payload)) !== false; }
+    catch { took = false; }
+    if (took) ch.postMessage({ kind:'ack', id: e.data.id });`,
+    to:`    ch.postMessage({ kind:'ack', id: e.data.id });
+    fn(e.data.payload);` },
+  { id:'stale-invite-silent', area:'转送', why:'邀请已失效时默默丢掉回执，什么都不说',
+    from:`  if (!pairing){
+    toast('这张邀请已经失效了（页面刷新过）。重新点一次「邀请玩家」生成新码。');
+    return false;
+  }`,
+    to:`  if (!pairing) return false;` },
+
   // ── 入站报文的守卫（本轮审计新加的） ──
   { id:'no-msg-guard', area:'协议健壮性', why:'不挡住非对象报文（对端发 `null` 就崩）',
     from:'if (!msg || typeof msg !== \'object\') return;', to:'' },

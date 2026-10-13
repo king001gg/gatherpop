@@ -394,7 +394,7 @@ test('★ 完整往返：邀请码 → 回执码 → 房主扫回执 → 接上'
   // 3. 房主扫回执 —— 落在一个新标签页，由它把回执转回原页面
   const relay = boot({ BroadcastChannel: bus, hash: hashOf(answerUrl) });
   assert.match(relay.html(), /正在把回执转回/, '一进来先说自己在干什么');
-  await until(() => /回执已转回/.test(relay.html()), 1500);
+  await until(() => /回执已交到房主那一页/.test(relay.html()), 1500);
   assert.match(relay.html(), /这一页可以直接关掉/, '转送成功才敢让用户关页面');
 
   // 4. 原页面收到回执、接上，加入端自动进房间
@@ -408,9 +408,26 @@ test('★ 原来那页已经关了：转送页老实说没送到，而不是谎�
   // 总线上只有转送页自己 —— 没人接，也就没有回执
   const relay = boot({ BroadcastChannel: makeBus(), hash: '#a=zSOMETHING' });
   assert.match(relay.html(), /正在把回执转回/);
-  await until(() => /没找到原来的房间页/.test(relay.html()), 3000);
-  assert.doesNotMatch(relay.html(), /回执已转回/, '没送到就不能说送到了');
+  await until(() => /没能把回执送到房主手里/.test(relay.html()), 3000);
+  assert.doesNotMatch(relay.html(), /回执已交到房主那一页/, '没送到就不能说送到了');
   assert.match(relay.html(), /同一台设备/, '要给出可操作的下一步');
+});
+
+test('★ 房主那页手上已经没有邀请了：转送页必须报「没送到」，不能报成功', async () => {
+  /* 房主那一页开着（所以它会应声），但手上没有 invitation 了 ——
+     刷新过、或者邀请浮层已经被关掉。旧实现里 ack 在调用回调**之前**就无条件发出，
+     于是这种情况会被报成「已接上」：转送页写「连接应该已经接上了」，房主那边什么都
+     没发生，加入端则一直停在「差最后一步」。这正是用户踩到的那个坑。 */
+  const bus = makeBus();
+  const host = boot({ BroadcastChannel: bus });
+  host.click({ t:'create', name:'房主' });   // 建了房，但从没点过「邀请玩家」
+
+  const relay = boot({ BroadcastChannel: bus, hash: '#a=zSOMETHING' });
+  await until(() => /没能把回执送到房主手里/.test(relay.html()), 3000);
+
+  assert.doesNotMatch(relay.html(), /回执已交到房主那一页/, '★ 用不上就不能报成功');
+  assert.match(host.dom.byId.toast.textContent, /已经失效/,
+    '★ 房主那页要说出来，不能默默丢掉这份回执');
 });
 
 test('房间页在没有邀请时不该有浮层', () => {
