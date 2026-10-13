@@ -396,6 +396,7 @@ test('★ 完整往返：邀请码 → 回执码 → 房主扫回执 → 接上'
   assert.match(relay.html(), /正在把回执转回/, '一进来先说自己在干什么');
   await until(() => /回执已交到房主那一页/.test(relay.html()), 1500);
   assert.match(relay.html(), /这一页可以直接关掉/, '转送成功才敢让用户关页面');
+  assert.doesNotMatch(relay.html(), /交给房主就能接上/, '送到了就不该再摆出救场那一段');
 
   // 4. 原页面收到回执、接上，加入端自动进房间
   await until(() => /2 人/.test(host.html()), 1500);
@@ -410,7 +411,42 @@ test('★ 原来那页已经关了：转送页老实说没送到，而不是谎�
   assert.match(relay.html(), /正在把回执转回/);
   await until(() => /没能把回执送到房主手里/.test(relay.html()), 3000);
   assert.doesNotMatch(relay.html(), /回执已交到房主那一页/, '没送到就不能说送到了');
-  assert.match(relay.html(), /同一台设备/, '要给出可操作的下一步');
+
+  /* ★ 送不到不等于回执废了。这一页手上就攥着那段回执，得把它交出去 ——
+     真机上最常见的失败是系统相机把回执交给了另一个浏览器，BroadcastChannel
+     根本够不着，这时候「手动粘回执」是唯一走得通的路，而它要的正是这段文字。 */
+  assert.match(relay.html(), /手动粘回执/, '要给出可操作的下一步');
+  assert.match(relay.html(), /zSOMETHING/, '★ 回执本身要摆出来，否则「手动粘」无从粘起');
+});
+
+test('★ 转送页摆出来的那段回执，房主手动粘进去真的能接上', async () => {
+  /* 上一条只验了「文字摆出来了」。摆出来的东西得真能用 —— 否则只是把用户
+     从一条死路引到另一条。这条走完整条救场路径：送不到 → 抄下来 → 粘进房主那页。 */
+  const bus = makeBus();
+  const host = boot({ BroadcastChannel: bus });
+  host.click({ t:'create', name:'房主' });
+  host.click({ t:'invite' });
+  await until(() => grabUrl(host.html(), 'o'));
+  const offerUrl = grabUrl(host.html(), 'o');
+
+  const guest = boot({ BroadcastChannel: bus, hash: hashOf(offerUrl) });
+  await until(() => grabUrl(guest.html(), 'a'));
+  const answerUrl = grabUrl(guest.html(), 'a');
+
+  // 转送页在**另一个浏览器**里 —— 总线是另一条，房主那页完全听不到
+  const relay = boot({ BroadcastChannel: makeBus(), hash: hashOf(answerUrl) });
+  await until(() => /没能把回执送到房主手里/.test(relay.html()), 3000);
+
+  const shown = (relay.html().match(/class="linkbox"[^>]*>([^<]+)</) || [])[1];
+  assert.ok(shown, '★ 送不到的时候，转送页上得能拿到那段回执');
+
+  // 原样粘给房主 —— 用户真会做的就是复制粘贴这么一下
+  host.setPrompt(shown);
+  host.click({ t:'acceptAnswer' });
+
+  await until(() => /2 人/.test(host.html()), 1500);
+  await until(() => /记分牌/.test(guest.html()), 1500);
+  assert.match(guest.html(), /已连上房主/, '★ 手动粘这条路得真的把房间接起来');
 });
 
 test('★ 房主那页手上已经没有邀请了：转送页必须报「没送到」，不能报成功', async () => {

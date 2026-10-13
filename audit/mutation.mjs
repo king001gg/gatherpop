@@ -64,6 +64,9 @@ const MUTANTS = [
     return false;
   }`,
     to:`  if (!pairing) return false;` },
+  { id:'relay-lost-drops-payload', area:'转送', why:'「没送到」那一屏把回执丢了，手动接那条路断掉',
+    from:`      relayState = { ...relayState, status: ok ? 'ok' : 'lost' };`,
+    to:`      relayState = { status: ok ? 'ok' : 'lost' };` },
 
   // ── 入站报文的守卫（本轮审计新加的） ──
   { id:'no-msg-guard', area:'协议健壮性', why:'不挡住非对象报文（对端发 `null` 就崩）',
