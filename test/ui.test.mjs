@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { FakePeerConnection, resetRtc } from './fake-rtc.mjs';
+import { FakePeerConnection, resetRtc, sessionClient } from './fake-rtc.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, '..', 'index.html'), 'utf8');
@@ -902,4 +902,57 @@ test('切后台 / 离开页面要立刻落盘 —— 手机被回收是常态，
   page.fire('pagehide');
   assert.ok(page.store.has(page.GP.ROOM_KEY), 'pagehide 是最后的机会，必须同步写完');
   assert.match(page.store.getItem(page.GP.ROOM_KEY), /m_后来改的/, '写的得是当下这一刻的状态');
+});
+
+/* ─────────────── 连不通时加入端看到什么 ───────────────
+   这是整个联机路径上最容易让人放弃的一屏：房主扫了、回执也送到了，两边却建不起
+   直连。原来这里什么都没有 —— 加入端永远停在「差最后一步」，房主永远停在
+   「接上了，等人进房间」，用户只能一遍遍重扫。 */
+
+/** 真实浏览器收集到的候选长这样：地址是随机 .local 假名，不是 IP（实测过） */
+const MDNS_SDP = 'ANSWER:S1\n'
+  + 'a=candidate:2790047764 1 udp 2113937151 71fffd57-3ef7-4fca-978c-6c046f90b977.local 60354 typ host generation 0 ufrag W4Kp\n'
+  + 'a=candidate:2148134658 1 udp 2113939711 8efb34ed-b87f-4316-95c0-225b7c26f283.local 60355 typ host generation 0 ufrag W4Kp';
+
+test('★ 加入端连不通时看到的是「连不上」和原因，不是永远停在「差最后一步」', async () => {
+  const bus = makeBus();
+  const host = boot({ BroadcastChannel: bus });
+  host.click({ t:'create', name:'房主' });
+  host.click({ t:'invite' });
+  await until(() => grabUrl(host.html(), 'o'));
+  const offerUrl = grabUrl(host.html(), 'o');
+
+  const guest = boot({ BroadcastChannel: bus, hash: hashOf(offerUrl) });
+  await until(() => grabUrl(guest.html(), 'a'));
+  assert.match(guest.html(), /差最后一步/, '一开始就是这一屏');
+
+  // 房主扫了回执 —— 加入端这头的连接动起来，然后失败
+  const pc = [...sessionClient.values()].pop();
+  pc._setConnState('failed');
+
+  assert.match(guest.html(), /连不上/, '★ 要换成诊断那一屏，而不是继续等');
+  assert.doesNotMatch(guest.html(), /差最后一步/, '★ 不能再停在原来那屏干等');
+  assert.match(guest.html(), /邀请玩家/, '★ 要告诉用户接下来做什么');
+});
+
+test('★ 候选全是 mDNS 假名时，说清是「要靠组播」而不是含糊的「网络有问题」', async () => {
+  /* 这是真机上最可能的那条路：两头收集到的局域网地址全是随机 .local，
+     要靠在同一个 WiFi 里组播互相解析；访客网络或开了客户端隔离的路由器会挡掉。
+     含糊一句「网络有问题」用户只能干瞪眼，得把机制说出来才知道换网络。 */
+  const bus = makeBus();
+  const host = boot({ BroadcastChannel: bus });
+  host.click({ t:'create', name:'房主' });
+  host.click({ t:'invite' });
+  await until(() => grabUrl(host.html(), 'o'));
+
+  const guest = boot({ BroadcastChannel: bus, hash: hashOf(grabUrl(host.html(), 'o')) });
+  await until(() => grabUrl(guest.html(), 'a'));
+
+  const pc = [...sessionClient.values()].pop();
+  pc.localDescription = { type:'answer', sdp: MDNS_SDP };   // 真机收集到的就是这个样子
+  pc._setConnState('failed');
+
+  assert.match(guest.html(), /mDNS 假名/, '★ 得点出候选是假名这回事');
+  assert.match(guest.html(), /组播/, '★ 得说清它靠什么才能通');
+  assert.match(guest.html(), /客户端隔离/, '★ 得指出路由器上那个具体的开关');
 });

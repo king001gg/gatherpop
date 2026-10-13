@@ -68,6 +68,27 @@ const MUTANTS = [
     from:`      relayState = { ...relayState, status: ok ? 'ok' : 'lost' };`,
     to:`      relayState = { status: ok ? 'ok' : 'lost' };` },
 
+  // ── 连不通时说不说得出话来 ──
+  // iceServers 是空的，跨设备只能靠局域网主机候选；而候选清一色是 mDNS 假名，
+  // 要靠 WiFi 组播解析。这一步在访客网络 / 客户端隔离下会无声无息地失败 ——
+  // 检测不到「失败了」并说出来，用户就只能对着两屏假象干等。
+  { id:'no-timeout-report', area:'连不通', why:'到点静默丢弃，界面上什么都不发生',
+    from:`    entry.timer = setTimeout(() => {
+      for (const fn of this._stateFns) fn(peerId, 'timeout');
+      this.discard(peerId);
+    }, this.connectTimeoutMs);`,
+    to:`    entry.timer = setTimeout(() => this.discard(peerId), this.connectTimeoutMs);` },
+  { id:'join-stall-silent', area:'连不通', why:'加入端不摆出诊断，永远停在「差最后一步」',
+    from:`      joinState = { ...joinState, stalled: hint };
+      render();
+    } else {
+      toast('没连上：' + hint);`,
+    to:`      render();
+    } else {
+      toast('没连上：' + hint);` },
+  { id:'hint-vague', area:'连不通', why:'候选全是 mDNS 假名时也只说含糊的「网络有问题」',
+    from:'  if (mdns === cands.length){', to:'  if (false){' },
+
   // ── 入站报文的守卫（本轮审计新加的） ──
   { id:'no-msg-guard', area:'协议健壮性', why:'不挡住非对象报文（对端发 `null` 就崩）',
     from:'if (!msg || typeof msg !== \'object\') return;', to:'' },

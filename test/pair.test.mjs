@@ -451,3 +451,41 @@ test('转送：没收到 ack 就把频道收掉，不留着下一次继续乱应
   // 第二个转送页照样没人在听 —— 上一页的频道要是没关，它这会儿还会来应一声
   assert.equal(await relaySignal('ANSWER-Y', 30), false);
 });
+
+/* ─────────────── 连不通时得说一声，不能默默等下去 ───────────────
+   iceServers 是空的（不借助任何外部服务器，这是隐私设计的一部分），两台设备
+   只能靠局域网主机候选直连；而浏览器给出的主机候选清一色是 mDNS 假名，跨设备
+   要靠 WiFi 的组播互相解析。这一步在访客网络、开了客户端隔离的路由器上会**无声
+   无息地失败**。传输层必须保证「失败了」这个事实一定传得上去，否则房主永远停在
+   「接上了，等人进房间」、加入端永远停在「差最后一步」。 */
+
+test('★ 邀请到点还没通，要报一声 timeout，而不是默默扔掉', async () => {
+  const { WebRtcTransport } = boot();
+  const net = new WebRtcTransport({ connectTimeoutMs: 30 });
+  const seen = [];
+  net.onStateChange((peerId, state) => seen.push([peerId, state]));
+
+  await net.hostOffer();
+  await new Promise(r => setTimeout(r, 80));
+
+  assert.deepEqual(seen, [['p1', 'timeout']],
+    '★ 原来是静默 discard —— 界面上什么都没发生，用户只能干等');
+  assert.equal(net.peerIds.length, 0, '报完才扔，别留垃圾');
+});
+
+test('接上了就不再报 timeout —— 定时器在通道打开时就该收掉', async () => {
+  const { WebRtcTransport } = boot();
+  const hostT = new WebRtcTransport({ connectTimeoutMs: 40 });
+  const clientT = new WebRtcTransport();
+  const seen = [];
+  hostT.onStateChange((peerId, state) => seen.push(state));
+
+  const { payload } = await hostT.hostOffer();
+  const { payload: answer } = await clientT.clientAnswer(payload);
+  await hostT.hostAccept(answer);
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(hostT.peerIds.length, 1, '先确认真的通了');
+
+  await new Promise(r => setTimeout(r, 60));   // 越过 connectTimeoutMs 再看
+  assert.deepEqual(seen, [], '通了就不该再冒 timeout 出来');
+});

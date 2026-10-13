@@ -47,12 +47,20 @@ export class FakePeerConnection {
     this.localDescription = null;
     this.remoteDescription = null;
     this.iceGatheringState = 'new';
+    this.connectionState = 'new';
     this._listeners = {};
     this._dc = null;
     this.ondatachannel = null;
     this.closed = false;
     /** 测试用：让收集永远停在半路，验证超时兜底 */
     this.neverGather = false;
+  }
+
+  /** 测试用：把底层连接推到某个状态并通知监听者。
+      真机上连不通时界面说什么，全靠这条路上报 —— 得能推。 */
+  _setConnState(s){
+    this.connectionState = s;
+    for (const fn of this._listeners.connectionstatechange || []) fn();
   }
 
   addEventListener(type, fn){ (this._listeners[type] = this._listeners[type] || []).push(fn); }

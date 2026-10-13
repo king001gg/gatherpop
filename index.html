@@ -3839,7 +3839,13 @@ class WebRtcTransport extends Transport {
     await entry.pc.setLocalDescription(await entry.pc.createOffer());
     await waitForIce(entry.pc, this.gatherTimeoutMs);
 
-    entry.timer = setTimeout(() => this.discard(peerId), this.connectTimeoutMs);
+    /* 到点了还没通 —— 原来这里是**静默丢弃**：房主看到「接上了，等人进房间」、
+       加入端看到「差最后一步」，然后两边一起永远等下去，谁都不说为什么。
+       先报一声再扔，界面才有话可说。 */
+    entry.timer = setTimeout(() => {
+      for (const fn of this._stateFns) fn(peerId, 'timeout');
+      this.discard(peerId);
+    }, this.connectTimeoutMs);
     return { peerId, payload: await packSignal({ pid:peerId, sdp: entry.pc.localDescription.sdp }) };
   }
 
@@ -4078,6 +4084,37 @@ async function startJoining(payload){
   render();
 }
 
+const JOIN_STALL_MS = 20000;   // 加入端从 ICE 开始动到彻底没戏，等这么久
+
+/* ── 连不通时到底该怪谁 ──
+   这是这个 App 最要紧的一句人话。iceServers 是空的（不借助任何外部服务器，
+   这是隐私设计的一部分），于是两台设备只能靠**局域网里的主机候选**直连。
+   而浏览器不肯把真实 IP 交出来 —— 实测过两个来源（公网 HTTPS 和局域网 HTTP），
+   收集到的候选**清一色是 mDNS 假名**（一串随机 .local，见 audit 里的记录）。
+   这意味着两台设备之间必须靠 WiFi 的组播，把对方那个随机名字解析出来。
+
+   访客网络、开了「客户端隔离 / AP 隔离」的路由器、以及两台设备压根不在同一个
+   WiFi 里，都会让这一步无声无息地失败 —— 不报错，只是永远连不上。
+   一句泛泛的「网络有问题」帮不到人，所以这里按实际收集到的候选分情况说。 */
+function noLinkHint(peerId){
+  const cands = net.candidatesFor(peerId);
+  const mdns = cands.filter(c => c.mdns).length;
+
+  if (!cands.length){
+    return '两台设备之间没能建起直连，而且这张邀请里一个局域网地址都没收集到。'
+         + '先确认两台设备连的是同一个 WiFi。';
+  }
+  if (mdns === cands.length){
+    return `两台设备之间没能建起直连。这张邀请里的 ${cands.length} 个局域网地址`
+         + '全是 mDNS 假名（浏览器不肯暴露真实 IP），得靠同一个 WiFi 里的组播'
+         + '互相解析出对方那个随机名字。访客网络、或者开了「客户端隔离 / AP 隔离」'
+         + '的路由器会把组播挡掉 —— 那种网络下两台设备永远看不见对方，'
+         + '换一个网络，或者关掉路由器的客户端隔离再试。';
+  }
+  return '两台设备之间没能建起直连。确认两台设备在同一个 WiFi 里，'
+       + '并且路由器没有开「客户端隔离 / AP 隔离」。';
+}
+
 /* 启动时看地址栏里有没有带信令（都是 # 片段，不会发往服务器） */
 const bootSignal = readSignalFromHash(location.hash);
 
@@ -4110,12 +4147,42 @@ if (net){
     onRelayedSignal((payload) => acceptAnswer(payload));
   }
 
-  // 底层连接真的失败了就说出来 —— 不然用户只看到「等人进房间」干等
+  /* 连不通就说出来 —— 不然房主只看到「接上了，等人进房间」、加入端只看到
+     「差最后一步」，两边一起干等。failed 和 timeout 是同一件事的两条来路：
+     前者是 ICE 自己认输，后者是我们等够了。 */
   net.onStateChange((peerId, state) => {
-    if (state === 'failed'){
-      toast('没连上：两台设备之间建不起直连。多半是路由器开了客户端隔离，或者这个网络禁止设备互访。');
+    if (state === 'connected'){ disarmJoinStall(); return; }
+    if (state === 'connecting' || state === 'disconnected'){ armJoinStall(peerId); return; }
+    if (state !== 'failed' && state !== 'timeout') return;
+
+    disarmJoinStall();
+    const hint = noLinkHint(peerId);
+    /* 加入端正盯着那一屏看，话得落在屏幕上；房主那边弹一句就够，
+       他手上还有「重新出张码」这条路。 */
+    if (screen === 'joining' && joinState && joinState.status === 'waiting'){
+      joinState = { ...joinState, stalled: hint };
+      render();
+    } else {
+      toast('没连上：' + hint);
     }
   });
+
+  /* 加入端停在「等房主扫回执」那一屏时，房主一扫，ICE 就该动起来
+     （connectionState 变成 connecting）。**从这一刻起**计时，不能页面一打开就数 ——
+     房主可能过一分钟才扫，那样会误报。到最后还是没通，就把话说在屏幕上。 */
+  let joinStallTimer = null;
+  function disarmJoinStall(){
+    if (joinStallTimer){ clearTimeout(joinStallTimer); joinStallTimer = null; }
+  }
+  function armJoinStall(peerId){
+    if (joinStallTimer || screen !== 'joining' || ctrl.mode === 'client') return;
+    joinStallTimer = setTimeout(() => {
+      joinStallTimer = null;
+      if (!joinState || joinState.status !== 'waiting' || net.connectedCount) return;
+      joinState = { ...joinState, stalled: noLinkHint(peerId) };
+      render();
+    }, JOIN_STALL_MS);
+  }
 }
 
 if (bootSignal){
@@ -4371,6 +4438,22 @@ function joiningHTML(){
           <h1 style="font-size:18px;margin:0 0 6px">这张邀请用不了</h1>
           <p class="note">${esc(st.error)}</p>
           <p class="note">多半是房主那一页关了或者刷新过。让房主重新点一次「邀请玩家」再扫。</p>
+          <button class="btn ghost" data-act='{"t":"goHome"}'>回到首页</button>
+        </div>
+      </div></div>`;
+  }
+
+  /* 走到这一步说明房主**已经扫过了**（ICE 动起来才会有这个状态），
+     所以那个回执码已经用掉 —— 再摆着只会让人对着一个废码重扫。
+     这时候该回答的是「为什么连不上」。 */
+  if (st.stalled){
+    return `
+      <div class="overlay"><div class="inner">
+        <div class="card">
+          <h1 style="font-size:18px;margin:0 0 6px">连不上</h1>
+          <p class="note">房主那边扫到了，但两台设备之间没能建起直连。</p>
+          <p class="note">${esc(st.stalled)}</p>
+          <p class="note">这张码已经用掉了，得让房主重新点一次「邀请玩家」出张新的。</p>
           <button class="btn ghost" data-act='{"t":"goHome"}'>回到首页</button>
         </div>
       </div></div>`;
